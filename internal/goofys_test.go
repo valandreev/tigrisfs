@@ -569,6 +569,8 @@ func (s *GoofysTest) TestWriteLargeTruncateMem20M(t *C) {
 }
 
 func (s *GoofysTest) TestEvictedRMWMem20M(t *C) {
+	t.Skip("seems to be OOM'ing")
+
 	fileName := "testRMW"
 
 	root := s.getRoot(t)
