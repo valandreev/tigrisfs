@@ -439,10 +439,17 @@ func (s *S3Backend) Init(key string) error {
 	return nil
 }
 
+func withHeader(req *request.Request, key, value string) {
+	req.HTTPRequest.Header.Set(key, value)
+}
+
 func (s *S3Backend) ListObjectsV2(params *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, string, error) {
 	if s.config.ListV1Ext {
 		in := s3.ListObjectsV1ExtInput(*params)
 		req, resp := s.S3.ListObjectsV1ExtRequest(&in)
+		if s.flags.TigrisPrefetch {
+			withHeader(req, "X-Tigris-Prefetch", "true")
+		}
 		err := req.Send()
 		if err != nil {
 			if awsErr, ok := err.(awserr.Error); ok {
@@ -464,6 +471,9 @@ func (s *S3Backend) ListObjectsV2(params *s3.ListObjectsV2Input) (*s3.ListObject
 		return &out, s.getRequestId(req), nil
 	} else if s.config.ListV2 {
 		req, resp := s.S3.ListObjectsV2Request(params)
+		if s.flags.TigrisPrefetch {
+			withHeader(req, "X-Tigris-Prefetch", "true")
+		}
 		err := req.Send()
 		if err != nil {
 			return nil, "", err

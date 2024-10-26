@@ -140,6 +140,10 @@ MISC OPTIONS:
 			Value: gid,
 			Usage: "Drop root group and change to this group ID (defaults to --gid).",
 		},
+		cli.BoolFlag{
+			Name:  "no-tigris-prefetch",
+			Usage: "Disable Tigris prefetch on list (default: on)",
+		},
 	}
 
 	s3Flags := []cli.Flag{
@@ -904,8 +908,10 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		DebugGrpc:              c.Bool("debug_grpc"),
 
 		// Cluster Mode
-		ClusterMode:            c.Bool("cluster"),
-		ClusterGrpcReflection:  c.Bool("grpc-reflection"),
+		ClusterMode:           c.Bool("cluster"),
+		ClusterGrpcReflection: c.Bool("grpc-reflection"),
+
+		TigrisPrefetch: !c.Bool("no-tigris-prefetch"),
 	}
 
 	if runtime.GOOS == "windows" {
@@ -1095,5 +1101,6 @@ func DefaultFlags() *FlagStorage {
 			{PartSize: 25 * 1024 * 1024, PartCount: 1000},
 			{PartSize: 125 * 1024 * 1024, PartCount: 8000},
 		},
+		TigrisPrefetch: true,
 	}
 }

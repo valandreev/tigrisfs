@@ -118,10 +118,12 @@ type FlagStorage struct {
 	StatsInterval time.Duration
 
 	// Cluster Mode
-	ClusterMode    bool
+	ClusterMode           bool
 	ClusterGrpcReflection bool
-	ClusterMe      *NodeConfig
-	ClusterPeers   []*NodeConfig
+	ClusterMe             *NodeConfig
+	ClusterPeers          []*NodeConfig
+
+	TigrisPrefetch bool
 }
 
 func (flags *FlagStorage) GetMimeType(fileName string) (retMime *string) {
