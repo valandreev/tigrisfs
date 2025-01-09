@@ -516,9 +516,7 @@ func (fs *ClusterFs) lookUpInode2(inode *Inode) (pbAttr *pb.Attributes, err erro
 
 // REQUIRED_LOCK(inode.KeepOwnerLock)
 func (fs *ClusterFs) getInodeAttributes(inode *Inode, size *uint64, mtime *time.Time, ctime *time.Time, mode *os.FileMode) {
-	inode.mu.Lock()
 	attr := inode.GetAttributes()
-	inode.mu.Unlock()
 
 	*size = attr.Size
 	*mtime = attr.Mtime
@@ -529,6 +527,9 @@ func (fs *ClusterFs) getInodeAttributes(inode *Inode, size *uint64, mtime *time.
 // REQUIRED_LOCK(inode.KeepOwnerLock)
 func (fs *ClusterFs) setInodeAttributes(inode *Inode, size *uint64, mtime *time.Time, ctime *time.Time, mode *os.FileMode) error {
 	modified := false
+
+	inode.mu.Lock()
+	defer inode.mu.Unlock()
 
 	if size != nil && inode.Attributes.Size != *size {
 		if *size > fs.Goofys.getMaxFileSize() {
@@ -560,7 +561,7 @@ func (fs *ClusterFs) setInodeAttributes(inode *Inode, size *uint64, mtime *time.
 		inode.fs.WakeupFlusher()
 	}
 
-	attr := inode.GetAttributes()
+	attr := inode.InflateAttributes()
 
 	*size = attr.Size
 	*mtime = attr.Mtime
@@ -660,6 +661,7 @@ func (fs *ClusterFs) applyStolenInode(inode *Inode, stolenInode *pb.StolenInode)
 	inode.Attributes.Mtime = stolenInode.Attr.Mtime.AsTime()
 	inode.Attributes.Ctime = stolenInode.Attr.Ctime.AsTime()
 	inode.Attributes.Mode = iofs.FileMode(stolenInode.Attr.Mode)
+	inode.knownSize = stolenInode.Attr.Size
 
 	inode.refcnt = stolenInode.Refcnt
 
@@ -729,6 +731,7 @@ func (fs *ClusterFs) tryYield(inode *Inode, newOwner NodeId) *pb.StolenInode {
 			} else {
 				fuseLog.Infof("could not yield inode %v: len(inode.dir.DeletedChildren) == %v",
 					inode.Id, len(inode.dir.DeletedChildren))
+				inode.TryFlush(MAX_FLUSH_PRIORITY)
 				return nil
 			}
 		} else {
@@ -754,6 +757,7 @@ func (fs *ClusterFs) tryYield(inode *Inode, newOwner NodeId) *pb.StolenInode {
 	} else {
 		fuseLog.Infof("could not yield inode %v: inode.CacheState == %v inode.fileHandles == %v",
 			inode.Id, inode.CacheState, inode.fileHandles)
+		inode.TryFlush(MAX_FLUSH_PRIORITY)
 		return nil
 	}
 }

@@ -1,10 +1,13 @@
 export CGO_ENABLED=0
 
-run-test: s3proxy.jar
+run-test: s3proxy.jar build
 	./test/run-tests.sh
 
 run-xfstests: s3proxy.jar xfstests
 	./test/run-xfstests.sh
+
+run-cluster-test: s3proxy.jar
+	./test/cluster/test_random.sh
 
 xfstests:
 	git clone --depth=1 https://github.com/kdave/xfstests

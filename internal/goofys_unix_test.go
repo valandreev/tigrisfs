@@ -365,7 +365,7 @@ func (s *GoofysTest) TestPythonCopyTree(t *C) {
 
 	mountPoint := s.tmp + "/mnt" + s.fs.bucket
 
-	s.runFuseTest(t, mountPoint, true, "python", "-c",
+	s.runFuseTest(t, mountPoint, true, "python3", "-c",
 		"import shutil; shutil.copytree('dir2', 'dir5')",
 		mountPoint)
 }

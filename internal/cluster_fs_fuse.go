@@ -4,17 +4,17 @@ package internal
 
 import (
 	"context"
-	iofs "io/fs"
 	"fmt"
-	"syscall"
+	iofs "io/fs"
 	"sync/atomic"
+	"syscall"
 
-	"github.com/yandex-cloud/geesefs/internal/cfg"
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
-	"github.com/yandex-cloud/geesefs/internal/pb"
 	"github.com/sirupsen/logrus"
+	"github.com/yandex-cloud/geesefs/internal/cfg"
+	"github.com/yandex-cloud/geesefs/internal/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -66,8 +66,8 @@ func (fs *ClusterFsFuse) CreateFile(ctx context.Context, op *fuseops.CreateFileO
 			op.Entry.Attributes.Mtime = attr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = attr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(attr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 			op.Handle = fuseops.HandleID(handleId)
 		},
 		func(parent *Inode, parentOwner NodeId) *pb.Owner {
@@ -117,8 +117,8 @@ func (fs *ClusterFsFuse) CreateFile(ctx context.Context, op *fuseops.CreateFileO
 			op.Entry.Attributes.Mtime = resp.Attr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = resp.Attr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(resp.Attr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 			op.Handle = fuseops.HandleID(resp.HandleId)
 
 			return nil
@@ -336,8 +336,8 @@ func (fs *ClusterFsFuse) CreateSymlink(ctx context.Context, op *fuseops.CreateSy
 			op.Entry.Attributes.Mtime = attr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = attr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(attr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 		},
 		func(parent *Inode, parentOwner NodeId) *pb.Owner {
 			var resp *pb.CreateSymlinkResponse
@@ -381,8 +381,8 @@ func (fs *ClusterFsFuse) CreateSymlink(ctx context.Context, op *fuseops.CreateSy
 			op.Entry.Attributes.Mtime = resp.Attr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = resp.Attr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(resp.Attr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 
 			return nil
 		},
@@ -450,8 +450,8 @@ func (fs *ClusterFsFuse) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err er
 			op.Entry.Attributes.Mtime = attr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = attr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(attr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 		},
 		func(parent *Inode, parentOwner NodeId) *pb.Owner {
 			// 1st phase
@@ -496,8 +496,8 @@ func (fs *ClusterFsFuse) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err er
 			op.Entry.Attributes.Mtime = resp.Attr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = resp.Attr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(resp.Attr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 
 			return nil
 		},
@@ -643,8 +643,8 @@ func (fs *ClusterFsFuse) LookUpInode(ctx context.Context, op *fuseops.LookUpInod
 			op.Entry.Attributes.Mtime = pbAttr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = pbAttr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(pbAttr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 		},
 		func(parent *Inode, parentOwner NodeId) *pb.Owner {
 			// 1st phase
@@ -688,8 +688,8 @@ func (fs *ClusterFsFuse) LookUpInode(ctx context.Context, op *fuseops.LookUpInod
 			op.Entry.Attributes.Mtime = resp.Attr.Mtime.AsTime()
 			op.Entry.Attributes.Ctime = resp.Attr.Ctime.AsTime()
 			op.Entry.Attributes.Mode = iofs.FileMode(resp.Attr.Mode)
-			op.Entry.Attributes.Uid = 1000
-			op.Entry.Attributes.Gid = 1001
+			op.Entry.Attributes.Uid = fs.Flags.Uid
+			op.Entry.Attributes.Gid = fs.Flags.Gid
 
 			return nil
 		},
@@ -749,8 +749,8 @@ func (fs *ClusterFsFuse) GetInodeAttributes(ctx context.Context, op *fuseops.Get
 			} else {
 				op.Attributes.Nlink = 1
 			}
-			op.Attributes.Uid = 1000
-			op.Attributes.Gid = 1001
+			op.Attributes.Uid = fs.Flags.Uid
+			op.Attributes.Gid = fs.Flags.Gid
 		},
 		func(inode *Inode, inodeOwner NodeId) *pb.Owner {
 			var resp *pb.GetInodeAttributesResponse
@@ -780,8 +780,8 @@ func (fs *ClusterFsFuse) GetInodeAttributes(ctx context.Context, op *fuseops.Get
 			op.Attributes.Mtime = resp.Attributes.Mtime.AsTime()
 			op.Attributes.Ctime = resp.Attributes.Ctime.AsTime()
 			op.Attributes.Mode = iofs.FileMode(resp.Attributes.Mode)
-			op.Attributes.Uid = 1000
-			op.Attributes.Gid = 1001
+			op.Attributes.Uid = fs.Flags.Uid
+			op.Attributes.Gid = fs.Flags.Gid
 
 			return nil
 		},
@@ -801,8 +801,8 @@ func (fs *ClusterFsFuse) SetInodeAttributes(ctx context.Context, op *fuseops.Set
 			} else {
 				op.Attributes.Nlink = 1
 			}
-			op.Attributes.Uid = 1000
-			op.Attributes.Gid = 1001
+			op.Attributes.Uid = fs.Flags.Uid
+			op.Attributes.Gid = fs.Flags.Gid
 		},
 		func(inode *Inode, inodeOwner NodeId) *pb.Owner {
 			var mtime *timestamppb.Timestamp
@@ -839,8 +839,8 @@ func (fs *ClusterFsFuse) SetInodeAttributes(ctx context.Context, op *fuseops.Set
 			op.Attributes.Mtime = resp.Attributes.Mtime.AsTime()
 			op.Attributes.Ctime = resp.Attributes.Ctime.AsTime()
 			op.Attributes.Mode = iofs.FileMode(resp.Attributes.Mode)
-			op.Attributes.Uid = 1000
-			op.Attributes.Gid = 1001
+			op.Attributes.Uid = fs.Flags.Uid
+			op.Attributes.Gid = fs.Flags.Gid
 
 			return nil
 		},

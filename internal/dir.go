@@ -1546,9 +1546,12 @@ func (inode *Inode) SetCacheState(state int32) {
 
 func (parent *Inode) addModified(inc int64) {
 	for parent != nil {
-		n := atomic.AddInt64(&parent.dir.ModifiedChildren, inc)
-		if n < 0 {
-			log.Errorf("BUG: ModifiedChildren of %v < 0", parent.FullName())
+		if atomic.LoadInt64(&parent.dir.ModifiedChildren) > 0 || inc > 0 {
+			n := atomic.AddInt64(&parent.dir.ModifiedChildren, inc)
+			if n < 0 {
+				parent.DumpTree("add_modified", true, true)
+				panic(fmt.Errorf("BUG: ModifiedChildren of %v < 0, n=%v, inc=%v", parent.FullName(), n, inc))
+			}
 		}
 		parent = parent.Parent
 	}
@@ -2008,6 +2011,9 @@ func (parent *Inode) LookUp(name string, doSlurp bool) (*Inode, error) {
 }
 
 func (parent *Inode) LookUpInodeMaybeDir(name string) (*BlobItemOutput, error) {
+	parent.mu.Lock()
+	defer parent.mu.Unlock()
+
 	cloud, parentKey := parent.cloud()
 	if cloud == nil {
 		panic("s3 disabled")

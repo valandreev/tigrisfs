@@ -713,7 +713,7 @@ func (inode *Inode) SetXattr(name string, value []byte, flags uint32) error {
 	inode.logFuse("SetXattr", name)
 
 	if name == "debug" {
-		inode.DumpTree(string(value) == "buffers")
+		inode.DumpTree("set_xattr", string(value) == "buffers", false)
 		return nil
 	}
 
@@ -852,20 +852,23 @@ func (inode *Inode) OpenFile() (fh *FileHandle, err error) {
 	return
 }
 
-func (inode *Inode) DumpTree(withBuffers bool) {
-	children := inode.DumpThis(withBuffers)
+func (inode *Inode) DumpTree(fn string, withBuffers bool, noLock bool) {
+	children := inode.DumpThis(fn, withBuffers, noLock)
 	for _, child := range children {
-		child.DumpThis(withBuffers)
+		child.DumpThis(fn, withBuffers, noLock)
 	}
 }
 
-func (inode *Inode) DumpThis(withBuffers bool) (children []*Inode) {
-	inode.mu.Lock()
-	defer inode.mu.Unlock()
+func (inode *Inode) DumpThis(fn string, withBuffers bool, noLock bool) (children []*Inode) {
+	if !noLock {
+		inode.mu.Lock()
+		defer inode.mu.Unlock()
+	}
 
 	fs := inode.fs
 
 	dataMap := make(map[string]interface{})
+	dataMap["fn"] = fn
 	dataMap["id"] = inode.Id
 	dataMap["path"] = inode.FullName()
 	if inode.CacheState == ST_DEAD {
@@ -910,6 +913,12 @@ func (inode *Inode) DumpThis(withBuffers bool) (children []*Inode) {
 			dataMap["renameStarted"] = true
 		}
 	}
+	if inode.Parent != nil {
+		dataMap["parent"] = map[string]any{
+			"id": inode.Parent.Id,
+			"name": inode.Parent.FullName(),
+		}
+	}
 	if len(inode.userMetadata) != 0 {
 		dataMap["userMetadata"] = inode.userMetadata
 	}
@@ -919,6 +928,8 @@ func (inode *Inode) DumpThis(withBuffers bool) (children []*Inode) {
 	dataMap["knownSize"] = inode.knownSize
 	dataMap["knownETag"] = inode.knownETag
 	dataMap["refcnt"] = inode.refcnt
+	dataMap["owner"] = inode.owner
+	dataMap["ownerTerm"] = inode.ownerTerm
 	if inode.pauseWriters != 0 {
 		dataMap["pauseWriters"] = inode.pauseWriters
 	}

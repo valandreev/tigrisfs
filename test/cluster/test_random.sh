@@ -1,25 +1,34 @@
 #!/bin/bash
 
 # Test creates and removes files and directories in random order
+#
 
-. common.sh
+set -x
+
+. `dirname $0`/common.sh
 
 _s3_setup() {
   :
 }
+
+NUM_ITER="${NUM_ITER:-50}"
 
 _cluster_setup() {
   mkdir -p "$TEST_ARTIFACTS/test_random"
   touch "$TEST_ARTIFACTS/test_random/log1" "$TEST_ARTIFACTS/test_random/log2" "$TEST_ARTIFACTS/test_random/log3"
 
   MNT1=$(mktemp -d)
-  _mount "$MNT1" --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log1" --pprof=6060 --cluster-me=1:localhost:1337 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT1" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log1" --pprof=6060 --cluster-me=1:localhost:1337 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
 
   MNT2=$(mktemp -d)
-  _mount "$MNT2" --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log2" --pprof=6070 --cluster-me=2:localhost:1338 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT2" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log2" --pprof=6070 --cluster-me=2:localhost:1338 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
 
   MNT3=$(mktemp -d)
-  _mount "$MNT3" --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log3" --pprof=6080 --cluster-me=3:localhost:1339 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+  _mount "$MNT3" -f --debug_fuse --debug_grpc --log-file="$TEST_ARTIFACTS/test_random/log3" --pprof=6080 --cluster-me=3:localhost:1339 --cluster-peer=1:localhost:1337 --cluster-peer=2:localhost:1338 --cluster-peer=3:localhost:1339
+
+  rm -rf "${MNT1:?}/*"
+  rm -rf "${MNT2:?}/*"
+  rm -rf "${MNT3:?}/*"
 
   VALID_DIR=$(mktemp -d)
   echo "=== VALID_DIR=$VALID_DIR"
@@ -32,7 +41,12 @@ _cleanup() {
 }
 
 _test() {
-  for I in {0..100}; do
+  sleep 5
+
+  ps -ef|grep geese
+  ps -ef|grep s3proxy
+
+  for I in $(seq 0 "$NUM_ITER"); do
     echo "=== Iteration $I"
     MNT=$(echo -e "$MNT1\n$MNT2\n$MNT3" | shuf -n 1)
 
