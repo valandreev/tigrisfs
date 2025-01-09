@@ -76,6 +76,9 @@ func NewGoofysWin(fs *Goofys) *GoofysWin {
 	fs.NotifyCallback = func(notifications []interface{}) {
 		go fsint.Notify(notifications)
 	}
+	if fs.flags.WinRefreshDirs {
+		go fsint.WinDirRefresher()
+	}
 	return fsint
 }
 
@@ -122,24 +125,54 @@ func mapWinError(err error) int {
 	}
 	err = mapAwsError(err)
 	switch err {
-	case syscall.EINVAL:
-		return -fuse.EINVAL
 	case syscall.EACCES:
 		return -fuse.EACCES
-	case syscall.ENOENT:
-		return -fuse.ENOENT
-	case syscall.ENOTSUP:
-		return -fuse.ENOTSUP
-	case syscall.EINTR:
-		return -fuse.EINTR
-	case syscall.ERANGE:
-		return -fuse.ERANGE
 	case syscall.EAGAIN:
 		return -fuse.EAGAIN
-	case syscall.ESTALE:
+	case syscall.EBUSY:
+		return -fuse.EBUSY
+	case syscall.ECONNRESET:
+		return -fuse.ECONNRESET
+	case syscall.EEXIST:
+		return -fuse.EEXIST
+	case syscall.EFBIG:
+		return -fuse.EFBIG
+	case syscall.EINTR:
+		return -fuse.EINTR
+	case syscall.EINVAL:
 		return -fuse.EINVAL
+	case syscall.EIO:
+		return -fuse.EIO
+	case syscall.EISDIR:
+		return -fuse.EISDIR
+	case syscall.ENODATA:
+		return -fuse.ENODATA
+	case syscall.ENODEV:
+		return -fuse.ENODEV
+	case syscall.ENOENT:
+		return -fuse.ENOENT
+	case syscall.ENOMEM:
+		return -fuse.ENOMEM
+	case syscall.ENOSYS:
+		return -fuse.ENOSYS
+	case syscall.ENOTDIR:
+		return -fuse.ENOTDIR
+	case syscall.ENOTEMPTY:
+		return -fuse.ENOTEMPTY
+	case syscall.ENOTSUP:
+		return -fuse.ENOTSUP
+	case syscall.ENXIO:
+		return -fuse.ENXIO
 	case syscall.EOPNOTSUPP:
 		return -fuse.EOPNOTSUPP
+	case syscall.EPERM:
+		return -fuse.EPERM
+	case syscall.ERANGE:
+		return -fuse.ERANGE
+	case syscall.ESPIPE:
+		return -fuse.ESPIPE
+	case syscall.ESTALE:
+		return -fuse.EINVAL
 	default:
 		return -fuse.EIO
 	}
@@ -436,7 +469,7 @@ func (fs *GoofysWin) Create(path string, flags int, mode uint32) (ret int, fhId 
 		return mapWinError(err), 0
 	}
 
-	inode, fh, err := parent.CreateOrOpen(child, true)
+	inode, fh, err := parent.Create(child)
 	if err != nil {
 		return mapWinError(err), 0
 	}
@@ -960,7 +993,35 @@ func (fs *GoofysWin) Notify(notifications []interface{}) {
 			in.mu.Lock()
 			p := in.FullName()
 			in.mu.Unlock()
-			fs.host.Notify(p+"/"+child, op)
+			fs.host.Notify("/"+p+"/"+child, op)
+		}
+	}
+}
+
+func (fs *GoofysWin) WinDirRefresher() {
+	for atomic.LoadInt32(&fs.shutdown) == 0 {
+		select {
+		case <-time.After(1 * time.Second):
+		case <-fs.shutdownCh:
+			return
+		}
+		fs.mu.Lock()
+		var dirs []*Inode
+		for _, dh := range fs.dirHandles {
+			dirs = append(dirs, dh.inode)
+		}
+		fs.mu.Unlock()
+		expireUnix := time.Now().Add(-fs.flags.StatCacheTTL)
+		notifications := make(map[string]struct{})
+		for _, dir := range dirs {
+			dir.mu.Lock()
+			if dir.Parent != nil && dir.dir.DirTime.Before(expireUnix) {
+				notifications["/"+dir.FullName()] = struct{}{}
+			}
+			dir.mu.Unlock()
+		}
+		for dir := range notifications {
+			fs.host.Notify(dir, fuse.NOTIFY_CHMOD | fuse.NOTIFY_CHOWN | fuse.NOTIFY_UTIME | fuse.NOTIFY_CHFLAGS | fuse.NOTIFY_TRUNCATE)
 		}
 	}
 }

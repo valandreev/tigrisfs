@@ -105,6 +105,8 @@ type FlagStorage struct {
 	DropPatchConflicts    bool
 	PreferPatchUploads    bool
 	NoPreloadDir          bool
+	NoVerifySSL           bool
+	WinRefreshDirs        bool
 
 	// Debugging
 	DebugMain  bool

@@ -30,7 +30,7 @@ import (
 	"github.com/urfave/cli"
 )
 
-const GEESEFS_VERSION = "0.42.0"
+const GEESEFS_VERSION = "0.42.3"
 
 var flagCategories map[string]string
 
@@ -140,9 +140,15 @@ MISC OPTIONS:
 			Value: gid,
 			Usage: "Drop root group and change to this group ID (defaults to --gid).",
 		},
+
 		cli.BoolFlag{
 			Name:  "no-tigris-prefetch",
 			Usage: "Disable Tigris prefetch on list (default: on)",
+		},
+
+		cli.BoolFlag{
+			Name:  "refresh-dirs",
+			Usage: "Automatically refresh open directories using notifications under Windows",
 		},
 	}
 
@@ -320,6 +326,11 @@ MISC OPTIONS:
 			Name:  "sdk-max-throttle-delay",
 			Value: 300 * time.Second,
 			Usage: "Maximum delay for AWS SDK retries of throttled requests.",
+		},
+
+		cli.BoolFlag{
+			Name:  "no-verify-ssl",
+			Usage: "Skip verify check ssl for s3",
 		},
 	}
 
@@ -844,6 +855,7 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		Gid:                    uint32(c.Int("gid")),
 		Setuid:                 c.Int("setuid"),
 		Setgid:                 c.Int("setgid"),
+		WinRefreshDirs:         c.Bool("refresh-dirs"),
 
 		// Tuning,
 		MemoryLimit:            uint64(1024*1024*c.Int("memory-limit")),
@@ -892,6 +904,7 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		DropPatchConflicts:     c.Bool("drop-patch-conflicts"),
 		PreferPatchUploads:     c.Bool("prefer-patch-uploads"),
 		NoPreloadDir:           c.Bool("no-preload-dir"),
+		NoVerifySSL:            c.Bool("no-verify-ssl"),
 
 		// Common Backend Config
 		Endpoint:               c.String("endpoint"),
