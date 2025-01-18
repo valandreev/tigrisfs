@@ -89,7 +89,7 @@ func NewS3(bucket string, flags *cfg.FlagStorage, config *cfg.S3Config) (*S3Back
 		awsConfig.LogLevel = aws.LogLevel(aws.LogDebug | aws.LogDebugWithRequestErrors)
 	}
 	if config.UseIAM {
-		s.TryIAM()
+		_ = s.TryIAM()
 	}
 
 	if config.UseKMS {
@@ -444,6 +444,7 @@ func withHeader(req *request.Request, key, value string) {
 }
 
 func (s *S3Backend) ListObjectsV2(params *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, string, error) {
+	/*
 	if s.config.ListV1Ext {
 		in := s3.ListObjectsV1ExtInput(*params)
 		req, resp := s.S3.ListObjectsV1ExtRequest(&in)
@@ -469,7 +470,9 @@ func (s *S3Backend) ListObjectsV2(params *s3.ListObjectsV2Input) (*s3.ListObject
 			}
 		}
 		return &out, s.getRequestId(req), nil
-	} else if s.config.ListV2 {
+	} else
+	*/
+	if s.config.ListV2 {
 		req, resp := s.S3.ListObjectsV2Request(params)
 		if s.flags.TigrisPrefetch {
 			withHeader(req, "X-Tigris-Prefetch", "true")
@@ -603,7 +606,7 @@ func (s *S3Backend) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			LastModified: i.LastModified,
 			Size:         uint64(*i.Size),
 			StorageClass: i.StorageClass,
-			Metadata:     i.UserMetadata,
+//			Metadata:     i.UserMetadata,
 		})
 	}
 
@@ -690,13 +693,13 @@ func (s *S3Backend) mpuCopyPart(from string, to string, mpuId string, bytes stri
 
 func (s *S3Backend) partsRequired(partSizes []cfg.PartSizeConfig, size int64) int {
 	var partsRequired int
-	for _, cfg := range partSizes {
-		totalSize := int64(cfg.PartCount * cfg.PartSize)
+	for _, config := range partSizes {
+		totalSize := int64(config.PartCount * config.PartSize)
 		if totalSize >= size {
-			partsRequired += int((size + int64(cfg.PartSize) - 1) / int64(cfg.PartSize))
+			partsRequired += int((size + int64(config.PartSize) - 1) / int64(config.PartSize))
 			break
 		}
-		partsRequired += int(cfg.PartCount)
+		partsRequired += int(config.PartCount)
 		size -= int64(totalSize)
 	}
 	return partsRequired
@@ -1023,6 +1026,8 @@ func (s *S3Backend) selectStorageClass(size *uint64) *string {
 }
 
 func (s *S3Backend) PatchBlob(param *PatchBlobInput) (*PatchBlobOutput, error) {
+	return nil, fmt.Errorf("not implemented")
+	/*
 	patch := &s3.PatchObjectInput{
 		Bucket:       &s.bucket,
 		Key:          &param.Key,
@@ -1049,6 +1054,7 @@ func (s *S3Backend) PatchBlob(param *PatchBlobInput) (*PatchBlobOutput, error) {
 		LastModified: resp.Object.LastModified,
 		RequestId:    s.getRequestId(req),
 	}, nil
+	 */
 }
 
 func (s *S3Backend) MultipartBlobBegin(param *MultipartBlobBeginInput) (*MultipartBlobCommitInput, error) {
