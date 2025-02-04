@@ -16,7 +16,9 @@
 package core
 
 import (
+	"github.com/rs/zerolog"
 	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/log"
 
 	"bytes"
 	"context"
@@ -28,11 +30,9 @@ import (
 	"syscall"
 	"time"
 
-	uuid "github.com/gofrs/uuid"
-	"github.com/sirupsen/logrus"
-
 	adl "github.com/Azure/azure-sdk-for-go/services/datalake/store/2016-11-01/filesystem"
 	"github.com/Azure/go-autorest/autorest"
+	uuid "github.com/gofrs/uuid"
 )
 
 type ADLv1 struct {
@@ -66,7 +66,7 @@ func (err ADLv1Err) Error() string {
 
 const ADL1_REQUEST_ID = "X-Ms-Request-Id"
 
-var adls1Log = cfg.GetLogger("adlv1")
+var adls1Log = log.GetLogger("adlv1")
 
 type ADLv1MultipartBlobCommitInput struct {
 	Size uint64
@@ -77,14 +77,12 @@ func IsADLv1Endpoint(endpoint string) bool {
 	//return strings.HasSuffix(endpoint, ".azuredatalakestore.net")
 }
 
-func adlLogResp(level logrus.Level, r *http.Response) {
-	if adls1Log.IsLevelEnabled(level) {
-		op := r.Request.URL.Query().Get("op")
-		requestId := r.Request.Header.Get(ADL1_REQUEST_ID)
-		respId := r.Header.Get(ADL1_REQUEST_ID)
-		adls1Log.Logf(level, "%v %v %v %v %v", op, r.Request.URL.String(),
-			requestId, r.Status, respId)
-	}
+func adlLogResp(level zerolog.Level, r *http.Response) {
+	op := r.Request.URL.Query().Get("op")
+	requestId := r.Request.Header.Get(ADL1_REQUEST_ID)
+	respId := r.Header.Get(ADL1_REQUEST_ID)
+	adls1Log.Debug().Msgf("%v %v %v %v %v", op, r.Request.URL.String(),
+		requestId, r.Status, respId)
 }
 
 func NewADLv1(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv1Config) (*ADLv1, error) {
@@ -111,15 +109,15 @@ func NewADLv1(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv1Config) (*
 			u, _ := uuid.NewV4()
 			r.Header.Add(ADL1_REQUEST_ID, u.String())
 
-			if adls1Log.IsLevelEnabled(logrus.DebugLevel) {
+			if adls1Log.GetLevel() <= zerolog.DebugLevel {
 				op := r.URL.Query().Get("op")
 				requestId := r.Header.Get(ADL1_REQUEST_ID)
-				adls1Log.Debugf("%v %v %v", op, r.URL.String(), requestId)
+				adls1Log.Debug().Str("operation", op).Str("url", r.URL.String()).Str("requestId", requestId).Msg("Debug log")
 			}
 
 			r, err := p.Prepare(r)
 			if err != nil {
-				log.Error(err)
+				adls1Log.Error().Err(err).Msg("Error in LogRequest")
 			}
 			return r, err
 		})
@@ -127,10 +125,10 @@ func NewADLv1(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv1Config) (*
 
 	LogResponse := func(p autorest.Responder) autorest.Responder {
 		return autorest.ResponderFunc(func(r *http.Response) error {
-			adlLogResp(logrus.DebugLevel, r)
+			adlLogResp(zerolog.DebugLevel, r)
 			err := p.Respond(r)
 			if err != nil {
-				log.Error(err)
+				adls1Log.Error().Err(err).Msg("Error in LogResponse")
 			}
 			return err
 		})
@@ -196,7 +194,7 @@ func mapADLv1Error(resp *http.Response, err error, rawError bool) error {
 				adlErr.resp = resp
 				return adlErr
 			} else {
-				adls1Log.Errorf("cannot parse error: %v", err)
+				adls1Log.Error().Err(err).Msg("Cannot parse error")
 				return syscall.EAGAIN
 			}
 		} else {
@@ -204,7 +202,7 @@ func mapADLv1Error(resp *http.Response, err error, rawError bool) error {
 			if err != nil {
 				return err
 			} else {
-				adlLogResp(logrus.ErrorLevel, resp)
+				adlLogResp(zerolog.ErrorLevel, resp)
 				return syscall.EINVAL
 			}
 		}

@@ -21,8 +21,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -69,8 +69,10 @@ func (s *GoofysTest) TestIssue69Fuse(t *C) {
 	t.Assert(err, IsNil)
 
 	// don't really care about error code, but it should be a PathError
-	os.Stat("dir1")
-	os.Stat("dir1")
+	_, err = os.Stat("dir1")
+	t.Assert(err, IsNil)
+	_, err = os.Stat("dir1")
+	t.Assert(err, NotNil)
 }
 
 func (s *GoofysTest) TestWriteAnonymousFuse(t *C) {
@@ -80,10 +82,10 @@ func (s *GoofysTest) TestWriteAnonymousFuse(t *C) {
 	mountPoint := s.tmp + "/mnt" + s.fs.bucket
 
 	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
-	os.Setenv("AWS_ACCESS_KEY_ID", "")
+	t.Assert(os.Setenv("AWS_ACCESS_KEY_ID", ""), IsNil)
 	s.mount(t, mountPoint)
 	defer s.umount(t, mountPoint)
-	os.Setenv("AWS_ACCESS_KEY_ID", accessKey)
+	t.Assert(os.Setenv("AWS_ACCESS_KEY_ID", accessKey), IsNil)
 
 	file, err := os.OpenFile(mountPoint+"/test", os.O_WRONLY|os.O_CREATE, 0600)
 	// Writes always succeed because flushes are asynchronous
@@ -102,7 +104,7 @@ func (s *GoofysTest) TestWriteAnonymousFuse(t *C) {
 	_, err = os.Stat(mountPoint + "/test")
 	t.Assert(err, IsNil)
 
-	_, err = ioutil.ReadFile(mountPoint + "/test")
+	_, err = os.ReadFile(mountPoint + "/test")
 	t.Assert(err, IsNil)
 }
 
@@ -118,7 +120,7 @@ func (s *GoofysTest) TestWriteSyncWriteFuse(t *C) {
 
 	defer func() {
 		if err != nil {
-			f.Close()
+			t.Assert(f.Close(), IsNil)
 		}
 	}()
 
@@ -178,13 +180,14 @@ func (s *GoofysTest) TestReadDirSlurpContinuation(t *C) {
 	s.mount(t, mountPoint)
 	// Check that all files are present to check that slurp works correctly with the continuation
 	count := 0
-	filepath.Walk(mountPoint+"/slurpc", func(path string, info fs.FileInfo, err error) error {
+	err = filepath.Walk(mountPoint+"/slurpc", func(path string, info fs.FileInfo, err error) error {
 		t.Assert(err, IsNil)
 		if !info.IsDir() {
 			count++
 		}
 		return nil
 	})
+	t.Assert(err, IsNil)
 	t.Assert(count, Equals, 2003)
 }
 
@@ -195,7 +198,7 @@ func (s *GoofysTest) writeSeekWriteFuse(t *C, file string, fh *os.File, first st
 	defer func() {
 		// close the file if the test failed so we can unmount
 		if fh != nil {
-			fh.Close()
+			t.Assert(fh.Close(), IsNil)
 		}
 	}()
 
@@ -220,7 +223,7 @@ func (s *GoofysTest) writeSeekWriteFuse(t *C, file string, fh *os.File, first st
 	t.Assert(err, IsNil)
 	fh = nil
 
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, first+second+third)
 
@@ -289,15 +292,19 @@ func (s *GoofysTest) TestRmdirWithDiropen(t *C) {
 	dir := mountPoint + "/dir2/dir5"
 	fh, err := os.Open(dir)
 	t.Assert(err, IsNil)
-	defer fh.Close()
+	defer func() {
+		_ = fh.Close()
+	}()
 
 	fh2, err := os.Open(mountPoint + "/dir2")
 	t.Assert(err, IsNil)
-	defer fh2.Close()
+	defer func() {
+		_ = fh2.Close()
+	}()
 	names, err := fh2.Readdirnames(0)
 	t.Assert(err, IsNil)
 	t.Assert(names, DeepEquals, []string{"dir3", "dir4", "dir5"})
-	fh2.Close()
+	t.Assert(fh2.Close(), IsNil)
 
 	// 2, remove dir5
 	if runtime.GOOS == "windows" {
@@ -311,7 +318,9 @@ func (s *GoofysTest) TestRmdirWithDiropen(t *C) {
 	// 3, readdir dir2
 	fh1, err := os.Open(mountPoint + "/dir2")
 	t.Assert(err, IsNil)
-	defer fh1.Close()
+	defer func() {
+		_ = fh1.Close()
+	}()
 	names, err = fh1.Readdirnames(0)
 	t.Assert(err, IsNil)
 	t.Assert(names, DeepEquals, []string{"dir3", "dir4"})
@@ -347,12 +356,16 @@ func (s *GoofysTest) TestRmImplicitDir(t *C) {
 
 	oldCwd, err := os.Getwd()
 	t.Assert(err, IsNil)
-	defer os.Chdir(oldCwd)
+	defer func() {
+		t.Assert(os.Chdir(oldCwd), IsNil)
+	}()
 
 	if runtime.GOOS != "windows" {
 		dir, err := os.Open(mountPoint + "/test_rm_implicit_dir/dir2")
 		t.Assert(err, IsNil)
-		defer dir.Close()
+		defer func() {
+			t.Assert(dir.Close(), IsNil)
+		}()
 
 		err = os.Chdir(mountPoint + "/test_rm_implicit_dir/dir2")
 		t.Assert(err, IsNil)
@@ -368,7 +381,9 @@ func (s *GoofysTest) TestRmImplicitDir(t *C) {
 
 	root, err := os.Open(mountPoint + "/test_rm_implicit_dir")
 	t.Assert(err, IsNil)
-	defer root.Close()
+	defer func() {
+		t.Assert(root.Close(), IsNil)
+	}()
 
 	files, err := root.Readdirnames(0)
 	t.Assert(err, IsNil)
@@ -383,7 +398,7 @@ func (s *GoofysTest) TestMount(t *C) {
 	s.mount(t, mountPoint)
 	defer s.umount(t, mountPoint)
 
-	log.Printf("Mounted at %v", mountPoint)
+	testLog.Printf("Mounted at %v", mountPoint)
 
 	time.Sleep(5 * time.Second)
 }
@@ -399,7 +414,7 @@ func (s *GoofysTest) TestReadExternalChangesFuse(t *C) {
 	file := "file1"
 	filePath := mountPoint + "/file1"
 
-	buf, err := ioutil.ReadFile(filePath)
+	buf, err := os.ReadFile(filePath)
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, file)
 
@@ -413,7 +428,7 @@ func (s *GoofysTest) TestReadExternalChangesFuse(t *C) {
 
 	time.Sleep(s.fs.flags.StatCacheTTL + 1*time.Second)
 
-	buf, err = ioutil.ReadFile(filePath)
+	buf, err = os.ReadFile(filePath)
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, update)
 
@@ -424,7 +439,7 @@ func (s *GoofysTest) TestReadExternalChangesFuse(t *C) {
 	//	syscall.EINVAL, *root.dir.cloud.Capabilities(),
 	//}
 
-	buf, err = ioutil.ReadFile(filePath)
+	buf, err = os.ReadFile(filePath)
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, update)
 }
@@ -456,7 +471,7 @@ func (s *GoofysTest) testReadMyOwnWriteFuse(t *C, externalUpdate bool) {
 
 	filePath := mountPoint + "/" + file
 
-	buf, err := ioutil.ReadFile(filePath)
+	buf, err := os.ReadFile(filePath)
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, update)
 
@@ -482,10 +497,10 @@ func (s *GoofysTest) testReadMyOwnWriteFuse(t *C, externalUpdate bool) {
 	// test
 	defer func() {
 		// want fh to be late-binding because we re-use the variable
-		fh.Close()
+		t.Assert(fh.Close(), IsNil)
 	}()
 
-	buf, err = ioutil.ReadFile(filePath)
+	buf, err = os.ReadFile(filePath)
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, "file3")
 
@@ -516,7 +531,7 @@ func (s *GoofysTest) testReadMyOwnWriteFuse(t *C, externalUpdate bool) {
 		// from the cloud her
 	}
 
-	buf, err = ioutil.ReadAll(fh)
+	buf, err = io.ReadAll(fh)
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, "file3")
 }
@@ -544,7 +559,9 @@ func (s *GoofysTest) TestReadMyOwnNewFileFuse(t *C) {
 	// we can't flush yet because if we did, we would be reading
 	// the new copy from cloud and that's not the point of this
 	// test
-	defer fh.Close()
+	defer func() {
+		t.Assert(fh.Close(), IsNil)
+	}()
 
 	// disabled: we can't actually read back our own update
 	//buf, err := ioutil.ReadFile(filePath)
@@ -562,7 +579,7 @@ func (s *GoofysTest) TestSlurpLookupNoCloud(t *C) {
 		err: syscall.ENOSYS,
 		ListBlobsFunc: func(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			p, d, a := NilStr(param.Prefix), NilStr(param.Delimiter), NilStr(param.StartAfter)
-			fmt.Printf("ListBlobs: Prefix=%v, Delimiter=%v, StartAfter=%v\n", p, d, a)
+			testLog.Debug().Msgf("ListBlobs: Prefix=%v, Delimiter=%v, StartAfter=%v\n", p, d, a)
 			if p == "" && d == "" && a == "testdir" {
 				return &ListBlobsOutput{
 					IsTruncated: true,
@@ -611,7 +628,7 @@ func (s *GoofysTest) TestListParallelExpireNoCloud(t *C) {
 		err: syscall.ENOSYS,
 		ListBlobsFunc: func(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			p, d, a := NilStr(param.Prefix), NilStr(param.Delimiter), NilStr(param.StartAfter)
-			fmt.Printf("ListBlobs: Prefix=%v, Delimiter=%v, StartAfter=%v\n", p, d, a)
+			testLog.Debug().Msgf("ListBlobs: Prefix=%v, Delimiter=%v, StartAfter=%v\n", p, d, a)
 			if p == "" && d == "" && a == "testdir" {
 				return &ListBlobsOutput{
 					IsTruncated: true,
@@ -672,7 +689,7 @@ func (s *GoofysTest) TestListParallelExpireNoCloud(t *C) {
 		t.Assert(err, IsNil)
 		dh := in.OpenDir()
 		t.Assert(namesOf(s.readDirFully(t, dh)), DeepEquals, names)
-		dh.CloseDir()
+		t.Assert(dh.CloseDir(), IsNil)
 	}
 	ch := make(chan int)
 	go checkDir(ch)
@@ -697,7 +714,7 @@ func (s *GoofysTest) TestListSlurpExpireNoCloud(t *C) {
 		ListBlobsFunc: func(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			p, d, a := NilStr(param.Prefix), NilStr(param.Delimiter), NilStr(param.StartAfter)
 			time.Sleep(1 * time.Second)
-			fmt.Printf("ListBlobs: Prefix=%v, Delimiter=%v, StartAfter=%v\n", p, d, a)
+			testLog.Debug().Msgf("ListBlobs: Prefix=%v, Delimiter=%v, StartAfter=%v\n", p, d, a)
 			if p == "" && d == "" && (a == "testdir" || a == "testdir/g" || a == "testdir/h" || a == "testdir/i") {
 				return &ListBlobsOutput{
 					IsTruncated: true,
@@ -777,7 +794,7 @@ func (s *GoofysTest) TestListSlurpExpireNoCloud(t *C) {
 	t.Assert(err, IsNil)
 	dh := in.OpenDir()
 	t.Assert(namesOf(s.readDirFully(t, dh)), DeepEquals, names)
-	dh.CloseDir()
+	t.Assert(dh.CloseDir(), IsNil)
 
 	// Sleep a bit to trigger eviction
 	time.Sleep(1 * time.Second)
@@ -790,7 +807,7 @@ func (s *GoofysTest) TestListSlurpExpireNoCloud(t *C) {
 	t.Assert(err, IsNil)
 	dh = in.OpenDir()
 	t.Assert(namesOf(s.readDirFully(t, dh)), DeepEquals, names)
-	dh.CloseDir()
+	t.Assert(dh.CloseDir(), IsNil)
 
 	names = nil
 	for i := 0; i < 100; i++ {
@@ -800,7 +817,7 @@ func (s *GoofysTest) TestListSlurpExpireNoCloud(t *C) {
 	t.Assert(err, IsNil)
 	dh = in.OpenDir()
 	t.Assert(namesOf(s.readDirFully(t, dh)), DeepEquals, names)
-	dh.CloseDir()
+	t.Assert(dh.CloseDir(), IsNil)
 
 	names = nil
 	for i := 0; i < 100; i++ {
@@ -810,5 +827,5 @@ func (s *GoofysTest) TestListSlurpExpireNoCloud(t *C) {
 	t.Assert(err, IsNil)
 	dh = in.OpenDir()
 	t.Assert(namesOf(s.readDirFully(t, dh)), DeepEquals, names)
-	dh.CloseDir()
+	t.Assert(dh.CloseDir(), IsNil)
 }

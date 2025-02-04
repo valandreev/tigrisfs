@@ -4,6 +4,7 @@ package core
 
 import (
 	"context"
+	"github.com/yandex-cloud/geesefs/log"
 	"net"
 
 	"github.com/yandex-cloud/geesefs/core/cfg"
@@ -13,7 +14,7 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-var grpcLog = cfg.GetLogger("grpc")
+var grpcLog = log.GetLogger("grpc")
 
 type GrpcServer struct {
 	*grpc.Server
@@ -30,13 +31,13 @@ func NewGrpcServer(flags *cfg.FlagStorage) *GrpcServer {
 }
 
 func (srv *GrpcServer) Start() error {
-	grpcLog.Info("start server")
+	grpcLog.Infof("start server")
 	lis, err := net.Listen("tcp", srv.flags.ClusterMe.Address)
 	if err != nil {
 		return err
 	}
 	if srv.flags.ClusterGrpcReflection {
-		grpcLog.Info("enable grpc reflection")
+		grpcLog.Infof("enable grpc reflection")
 		reflection.Register(srv)
 	}
 	if err = srv.Serve(lis); err != nil {
@@ -50,7 +51,7 @@ const (
 	DST_NODE_ID_METADATA_KEY = "dst-node-id"
 )
 
-var traceLog = cfg.GetLogger("trace")
+var traceLog = log.GetLogger("trace")
 
 func LogServerInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 	// theese requests generate a lot of bytes of logs, so disable it for now
@@ -76,11 +77,11 @@ func LogServerInterceptor(ctx context.Context, req interface{}, info *grpc.Unary
 	}
 
 	if !ok {
-		traceLog.Debug(src, " --> ", dst, " : ", info.FullMethod, " : ", req)
+		traceLog.Debug().Msgf("%s --> %s : %s : %+v", src, dst, info.FullMethod, req)
 	}
 	resp, err = handler(ctx, req)
 	if !ok {
-		traceLog.Debug(src, " <-- ", dst, " : ", info.FullMethod, " : ", resp)
+		traceLog.Debug().Msgf("%s <-- %s : %s : %+v", src, dst, info.FullMethod, req)
 	}
 	return
 }
@@ -109,11 +110,11 @@ func LogClientInterceptor(ctx context.Context, method string, req, resp interfac
 	}
 
 	if !ok {
-		traceLog.Debug(src, " --> ", dst, " : ", method, " : ", req)
+		traceLog.Debug().Msgf("%s --> %s : %s : %+v", src, dst, method, req)
 	}
 	err := invoker(ctx, method, req, resp, cc, opts...)
 	if !ok {
-		traceLog.Debug(src, " <-- ", dst, " : ", method, " : ", resp)
+		traceLog.Debug().Msgf("%s <-- %s : %s : %+v", src, dst, method, req)
 	}
 	return err
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/yandex-cloud/geesefs/log"
 )
 
 type S3Config struct {
@@ -86,6 +87,7 @@ type S3Config struct {
 }
 
 var s3Session *session.Session
+var cfgLog = log.GetLogger("config")
 
 func (c *S3Config) Init() *S3Config {
 	if c.Region == "" {
@@ -108,20 +110,20 @@ func (c *S3Config) Init() *S3Config {
 
 func (c *S3Config) logSourceOfCredentials(flags *FlagStorage) {
 	if c.AccessKey != "" {
-		log.Infof("internal config: %v", c.AccessKey)
+		cfgLog.Info().Msgf("internal config: %v", c.AccessKey)
 	} else if c.Profile != "" {
-		log.Infof("command line profile: %v", c.Profile)
+		cfgLog.Info().Msgf("command line profile: %v", c.Profile)
 	} else if os.Getenv("AWS_ACCESS_KEY_ID") != "" {
-		log.Infof("env AWS_ACCESS_KEY_ID = %v", os.Getenv("AWS_ACCESS_KEY_ID"))
+		cfgLog.Info().Msgf("env AWS_ACCESS_KEY_ID = %v", os.Getenv("AWS_ACCESS_KEY_ID"))
 	} else if os.Getenv("AWS_PROFILE") != "" {
-		log.Infof("env AWS_PROFILE = %v", os.Getenv("AWS_PROFILE"))
+		cfgLog.Info().Msgf("env AWS_PROFILE = %v", os.Getenv("AWS_PROFILE"))
 	}
 	if flags.Endpoint != "" {
-		log.Infof("command line endpoint: %v", flags.Endpoint)
+		cfgLog.Info().Msgf("command line endpoint: %v", flags.Endpoint)
 	} else if os.Getenv("AWS_ENDPOINT_URL") != "" {
-		log.Infof("env AWS_ENDPOINT_URL = %v", os.Getenv("AWS_ENDPOINT_URL"))
+		cfgLog.Info().Msgf("env AWS_ENDPOINT_URL = %v", os.Getenv("AWS_ENDPOINT_URL"))
 	} else if DefaultEndpoint != "" {
-		log.Infof("default endpoint = %v", DefaultEndpoint)
+		cfgLog.Info().Msgf("default endpoint = %v", DefaultEndpoint)
 	}
 }
 
@@ -138,7 +140,7 @@ func (c *S3Config) ToAwsConfig(flags *FlagStorage) (*aws.Config, error) {
 	}
 	awsConfig := (&aws.Config{
 		Region: &c.Region,
-		Logger: GetLogger("s3"),
+		Logger: log.GetLogger("s3"),
 	}).WithHTTPClient(&http.Client{
 		Transport: tr,
 		Timeout:   flags.HTTPTimeout,

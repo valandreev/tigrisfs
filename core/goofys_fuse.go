@@ -18,10 +18,9 @@
 package core
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-
 	"context"
 	"fmt"
+	"github.com/yandex-cloud/geesefs/log"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -31,8 +30,7 @@ import (
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
-
-	"github.com/sirupsen/logrus"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
 // jacobsa/fuse interface to the file system
@@ -60,7 +58,7 @@ func NewGoofysFuse(fs *Goofys) *GoofysFuse {
 			// Notify kernel in a separate thread/goroutine
 			go func() {
 				for _, n := range notifications {
-					fsint.connection.Notify(n)
+					fuseLog.E(fsint.connection.Notify(n))
 				}
 			}()
 		}
@@ -427,9 +425,9 @@ func (fs *GoofysFuse) ReleaseDirHandle(
 	dh := fs.dirHandles[op.Handle]
 	fs.mu.RUnlock()
 
-	dh.CloseDir()
+	fuseLog.E(dh.CloseDir())
 
-	fuseLog.Debugln("ReleaseDirHandle", dh.inode.FullName())
+	fuseLog.Debugf("ReleaseDirHandle %v", dh.inode.FullName())
 
 	fs.mu.Lock()
 	delete(fs.dirHandles, op.Handle)
@@ -496,13 +494,14 @@ func (fs *GoofysFuse) SyncFile(
 		in := fs.getInodeOrDie(op.Inode)
 
 		if in.Id == fuseops.RootInodeID {
-			err = fs.SyncTree(nil)
+			fs.SyncTree(nil)
 		} else if in.isDir() {
-			err = fs.SyncTree(in)
+			fs.SyncTree(in)
 		} else {
 			err = in.SyncFile()
 		}
 		err = mapAwsError(err)
+		fuseLog.E(err)
 	}
 
 	return
@@ -515,8 +514,7 @@ func (fs *GoofysFuse) SyncFS(
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	if !fs.flags.IgnoreFsync {
-		err = fs.SyncTree(nil)
-		err = mapAwsError(err)
+		fs.SyncTree(nil)
 	}
 
 	return
@@ -542,7 +540,7 @@ func (fs *GoofysFuse) ReleaseFileHandle(
 	fh := fs.fileHandles[op.Handle]
 	fh.Release()
 	atomic.AddInt64(&fs.stats.noops, 1)
-	fuseLog.Debugln("ReleaseFileHandle", fh.inode.FullName(), op.Handle, fh.inode.Id)
+	fuseLog.Debugf("ReleaseFileHandle %v %v %v", fh.inode.FullName(), op.Handle, fh.inode.Id)
 	delete(fs.fileHandles, op.Handle)
 	fs.mu.Unlock()
 
@@ -571,7 +569,7 @@ func (fs *GoofysFuse) CreateFile(
 		return err
 	}
 
-	inode.SetAttributes(nil, &op.Mode, nil, &op.OpContext.Uid, &op.OpContext.Gid)
+	fuseLog.E(inode.SetAttributes(nil, &op.Mode, nil, &op.OpContext.Uid, &op.OpContext.Gid))
 
 	op.Entry.Child = inode.Id
 	op.Entry.Attributes = inode.InflateAttributes()
@@ -623,7 +621,7 @@ func (fs *GoofysFuse) MkNode(
 		fh.Release()
 	}
 	inode.Attributes.Rdev = op.Rdev
-	inode.SetAttributes(nil, &op.Mode, nil, &op.OpContext.Uid, &op.OpContext.Gid)
+	fuseLog.E(inode.SetAttributes(nil, &op.Mode, nil, &op.OpContext.Uid, &op.OpContext.Gid))
 
 	op.Entry.Child = inode.Id
 	op.Entry.Attributes = inode.InflateAttributes()
@@ -665,7 +663,7 @@ func (fs *GoofysFuse) MkDir(
 	} else {
 		inode.Attributes.Mode = os.ModeDir | fs.flags.DirMode
 	}
-	inode.SetAttributes(nil, nil, nil, &op.OpContext.Uid, &op.OpContext.Gid)
+	fuseLog.E(inode.SetAttributes(nil, nil, nil, &op.OpContext.Uid, &op.OpContext.Gid))
 
 	op.Entry.Child = inode.Id
 	op.Entry.Attributes = inode.InflateAttributes()
@@ -833,7 +831,7 @@ func (fs *GoofysFuse) Fallocate(
 			// Resize
 			if op.Offset+op.Length > fs.getMaxFileSize() {
 				// File size too large
-				log.Warnf(
+				fuseLog.Warnf(
 					"Maximum file size exceeded when trying to extend %v to %v bytes using fallocate",
 					inode.FullName(), op.Offset+op.Length,
 				)
@@ -934,7 +932,7 @@ func mountFuseFS(fs *Goofys) (mfs MountedFS, err error) {
 		FSName:                  fs.bucket,
 		Subtype:                 "geesefs",
 		Options:                 convertFuseOptions(fs.flags),
-		ErrorLogger:             cfg.GetStdLogger(cfg.NewLogger("fuse"), logrus.ErrorLevel),
+		ErrorLogger:             log.GetStdLogger(fuseLog.Logger),
 		DisableWritebackCaching: true,
 		UseVectoredRead:         true,
 		UseReadDirPlus:          true,
@@ -942,8 +940,7 @@ func mountFuseFS(fs *Goofys) (mfs MountedFS, err error) {
 	}
 
 	if fs.flags.DebugFuse {
-		fuseLog := cfg.GetLogger("fuse")
-		mountCfg.DebugLogger = cfg.GetStdLogger(fuseLog, logrus.DebugLevel)
+		mountCfg.DebugLogger = log.GetStdLogger(fuseLog.Logger)
 	}
 
 	fsint := NewGoofysFuse(fs)

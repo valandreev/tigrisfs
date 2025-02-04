@@ -89,7 +89,7 @@ func (l *FDQueue) CloseExtra() {
 		l.mu.Unlock()
 		inode.mu.Lock()
 		if inode.DiskCacheFD != nil {
-			inode.DiskCacheFD.Close()
+			fuseLog.E(inode.DiskCacheFD.Close())
 			inode.DiskCacheFD = nil
 			l.DeleteFD(inode)
 			inode.mu.Unlock()

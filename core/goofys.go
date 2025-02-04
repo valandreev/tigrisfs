@@ -18,6 +18,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"github.com/rs/zerolog"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -31,8 +32,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/sirupsen/logrus"
 	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/log"
 )
 
 // goofys is a Filey System written in Go. All the backend data is
@@ -142,9 +143,9 @@ type OpStats struct {
 	ts             time.Time
 }
 
-var s3Log = cfg.GetLogger("s3")
-var log = cfg.GetLogger("main")
-var fuseLog = cfg.GetLogger("fuse")
+var s3Log = log.GetLogger("s3")
+var mainLog = log.GetLogger("main")
+var fuseLog = log.GetLogger("fuse")
 
 func NewBackend(bucket string, flags *cfg.FlagStorage) (cloud StorageBackend, err error) {
 	if flags.Backend == nil {
@@ -213,20 +214,20 @@ func ParseBucketSpec(bucket string) (spec BucketSpec, err error) {
 
 func NewGoofys(ctx context.Context, bucketName string, flags *cfg.FlagStorage) (*Goofys, error) {
 	if flags.DebugFuse || flags.DebugMain {
-		log.Level = logrus.DebugLevel
+		mainLog.SetLevel(zerolog.DebugLevel)
 	}
 	if flags.DebugFuse {
-		fuseLog.Level = logrus.DebugLevel
+		fuseLog.SetLevel(zerolog.DebugLevel)
 	}
 	if flags.DebugS3 {
-		cfg.SetCloudLogLevel(logrus.DebugLevel)
+		log.SetCloudLogLevel(zerolog.DebugLevel)
 	}
 	if flags.Backend == nil {
 		if spec, err := ParseBucketSpec(bucketName); err == nil {
 			switch spec.Scheme {
 			case "adl":
 				auth, err := cfg.AzureAuthorizerConfig{
-					Log: cfg.GetLogger("adlv1"),
+					Log: log.GetLogger("adlv1"),
 				}.Authorizer()
 				if err != nil {
 					err = fmt.Errorf("couldn't load azure credentials: %v",
@@ -324,7 +325,7 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 	}
 
 	if flags.DebugS3 {
-		s3Log.Level = logrus.DebugLevel
+		s3Log.SetLevel(zerolog.DebugLevel)
 	}
 
 	cloud, err := newBackend(bucket, flags)
@@ -432,8 +433,8 @@ func RandStringBytesMaskImprSrc(n int) string {
 func (fs *Goofys) SigUsr1() {
 	fs.mu.RLock()
 
-	log.Infof("forgot %v inodes", fs.forgotCnt)
-	log.Infof("%v inodes", len(fs.inodes))
+	mainLog.Infof("forgot %v inodes", fs.forgotCnt)
+	mainLog.Infof("%v inodes", len(fs.inodes))
 	fs.mu.RUnlock()
 	debug.FreeOSMemory()
 }
@@ -495,7 +496,7 @@ func (fs *Goofys) StatPrinter() {
 		if reads == 0 {
 			readsOr1 = 1
 		}
-		log.Infof(
+		mainLog.Infof(
 			"I/O: %.2f read/s, %.2f %% hits, %.2f write/s; metadata: %.2f read/s, %.2f write/s, %.2f noop/s, %v alive, %.2f evict/s; %.2f flush/s",
 			float64(reads)/d,
 			float64(readHits)/readsOr1*100,
@@ -577,7 +578,7 @@ func (fs *Goofys) tryEvictToDisk(inode *Inode, buf *FileBuffer, toFs *int) {
 				_, err := inode.DiskCacheFD.WriteAt(buf.data, int64(buf.offset))
 				if err != nil {
 					*toFs = 0
-					log.Errorf("Couldn't write %v bytes at offset %v to %v: %v",
+					mainLog.Errorf("Couldn't write %v bytes at offset %v to %v: %v",
 						len(buf.data), buf.offset, fs.flags.CachePath+"/"+inode.FullName(), err)
 				} else {
 					buf.onDisk = true
@@ -791,7 +792,7 @@ func (fs *Goofys) MetaEvictor() {
 		retry = len(scan) >= toEvict && totalInodes > fs.flags.EntryLimit
 		atomic.AddInt64(&fs.stats.evicts, int64(evicted))
 		if len(scan) > 0 {
-			log.Debugf("metadata cache: alive %v, scanned %v, evicted %v", totalInodes, len(scan), evicted)
+			mainLog.Debugf("metadata cache: alive %v, scanned %v, evicted %v", totalInodes, len(scan), evicted)
 		}
 	}
 }
@@ -1147,12 +1148,12 @@ func (fs *Goofys) completeInflightListing(id int) map[string]bool {
 	return m
 }
 
-func (fs *Goofys) SyncTree(parent *Inode) (err error) {
+func (fs *Goofys) SyncTree(parent *Inode) {
 	if parent == nil || parent.Id == fuseops.RootInodeID {
-		log.Infof("Flushing all changes")
+		mainLog.Infof("Flushing all changes")
 		parent = nil
 	} else {
-		log.Infof("Flushing all changes under %v", parent.FullName())
+		mainLog.Infof("Flushing all changes under %v", parent.FullName())
 	}
 	fs.mu.RLock()
 	inodes := make([]fuseops.InodeID, 0, len(fs.inodes))

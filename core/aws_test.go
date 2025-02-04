@@ -86,7 +86,7 @@ func (s *S3BucketEventualConsistency) Init(key string) (err error) {
 	for i := 0; i < 10; i++ {
 		err = s.S3Backend.Init(key)
 		if err != nil && err.Error() == NoSuchBucket {
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		} else {
 			return
@@ -104,7 +104,7 @@ func (s *S3BucketEventualConsistency) HeadBlob(param *HeadBlobInput) (*HeadBlobO
 		res, err = s.S3Backend.HeadBlob(param)
 		switch mapAwsError(err) {
 		case syscall.ENXIO:
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		case syscall.ENOENT:
 			s.mu.RLock()
@@ -112,7 +112,7 @@ func (s *S3BucketEventualConsistency) HeadBlob(param *HeadBlobInput) (*HeadBlobO
 			s.mu.RUnlock()
 
 			if ok {
-				s3Log.Infof("waiting for blob: %v", param.Key)
+				s3Log.Info().Str("blob", param.Key).Msg("waiting for blob")
 				time.Sleep((time.Duration(i) + 1) * 20 * time.Millisecond)
 			}
 		default:
@@ -128,7 +128,7 @@ func (s *S3BucketEventualConsistency) ListBlobs(param *ListBlobsInput) (*ListBlo
 		res, err := s.S3Backend.ListBlobs(param)
 		switch mapAwsError(err) {
 		case syscall.ENXIO:
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		default:
 			return res, err
@@ -143,7 +143,7 @@ func (s *S3BucketEventualConsistency) DeleteBlob(param *DeleteBlobInput) (*Delet
 		res, err := s.S3Backend.DeleteBlob(param)
 		switch mapAwsError(err) {
 		case syscall.ENXIO:
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		default:
 			return res, err
@@ -158,7 +158,7 @@ func (s *S3BucketEventualConsistency) DeleteBlobs(param *DeleteBlobsInput) (*Del
 		res, err := s.S3Backend.DeleteBlobs(param)
 		switch mapAwsError(err) {
 		case syscall.ENXIO:
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		default:
 			return res, err
@@ -173,7 +173,7 @@ func (s *S3BucketEventualConsistency) CopyBlob(param *CopyBlobInput) (*CopyBlobO
 		res, err := s.S3Backend.CopyBlob(param)
 		switch mapAwsError(err) {
 		case syscall.ENXIO:
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		default:
 			return res, err
@@ -193,7 +193,7 @@ func (s *S3BucketEventualConsistency) PutBlob(param *PutBlobInput) (*PutBlobOutp
 		switch mapAwsError(err) {
 		case syscall.ENXIO:
 			param.Body.Seek(0, 0)
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		default:
 			return res, err
@@ -208,7 +208,7 @@ func (s *S3BucketEventualConsistency) RemoveBucket(param *RemoveBucketInput) (*R
 		res, err := s.S3Backend.RemoveBucket(param)
 		switch mapAwsError(err) {
 		case syscall.ENXIO:
-			s3Log.Infof("waiting for bucket")
+			s3Log.Info().Msg("waiting for bucket")
 			time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 		default:
 			return res, err

@@ -22,6 +22,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/rs/zerolog"
+	"github.com/yandex-cloud/geesefs/log"
 	"io"
 	"net"
 	"os"
@@ -41,23 +43,19 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
-	"github.com/sirupsen/logrus"
 	"github.com/yandex-cloud/geesefs/core/cfg"
 	. "gopkg.in/check.v1"
 )
 
-// so I don't get complains about unused imports
-var ignored = logrus.DebugLevel
-
 const PerTestTimeout = 10 * time.Minute
 
 func currentUid() uint32 {
-	user, err := user.Current()
+	usr, err := user.Current()
 	if err != nil {
 		panic(err)
 	}
 
-	uid, err := strconv.ParseUint(user.Uid, 10, 32)
+	uid, err := strconv.ParseUint(usr.Uid, 10, 32)
 	if err != nil {
 		panic(err)
 	}
@@ -66,12 +64,12 @@ func currentUid() uint32 {
 }
 
 func currentGid() uint32 {
-	user, err := user.Current()
+	usr, err := user.Current()
 	if err != nil {
 		panic(err)
 	}
 
-	gid, err := strconv.ParseUint(user.Gid, 10, 32)
+	gid, err := strconv.ParseUint(usr.Gid, 10, 32)
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +114,7 @@ func waitFor(t *C, addr string) (err error) {
 		conn, err = net.Dial("tcp", addr)
 		if err == nil {
 			// we are done!
-			conn.Close()
+			fuseLog.E(conn.Close())
 			return
 		} else {
 			t.Logf("Cound not connect: %v", err)
@@ -331,7 +329,7 @@ func (s *GoofysTest) deleteBucket(cloud StorageBackend) error {
 		_, err = cloud.RemoveBucket(&RemoveBucketInput{})
 		if awsErr, ok := err.(awserr.Error); ok {
 			if awsErr.Code() == "BucketNotEmpty" || awsErr.Code() == "InternalError" {
-				log.Warnf("Retrying delete")
+				testLog.Warnf("Retrying delete")
 				continue
 			} else if awsErr.Code() == "BucketNotExists" || awsErr.Code() == "NoSuchBucket" {
 				// Bucket is already deleted (may happen after a bad retry)
@@ -426,7 +424,7 @@ func (s *GoofysTest) setupBlobs(cloud StorageBackend, t *C, env map[string]*stri
 				params := &HeadBlobInput{Key: path}
 				res, err := cloud.HeadBlob(params)
 				if err != nil {
-					log.Errorf("Unexpected error: HEAD %v returned %v", path, err)
+					testLog.Errorf("Unexpected error: HEAD %v returned %v", path, err)
 					if err == syscall.ENOENT {
 						time.Sleep(3 * time.Second)
 						res, err = cloud.HeadBlob(params)
@@ -487,7 +485,7 @@ func (s *GoofysTest) setUpTestTimeout(t *C, timeout time.Duration) {
 }
 
 func (s *GoofysTest) SetUpTest(t *C) {
-	log.Infof("Starting %v at %v", t.TestName(), time.Now())
+	testLog.Infof("Starting %v at %v", t.TestName(), time.Now())
 
 	s.setUpTestTimeout(t, PerTestTimeout)
 
@@ -513,11 +511,11 @@ func (s *GoofysTest) SetUpTest(t *C) {
 	if hasEnv("DEBUG") {
 		flags.DebugS3 = true
 		flags.DebugFuse = true
-		cfg.SetCloudLogLevel(logrus.DebugLevel)
-		l := cfg.GetLogger("fuse")
-		l.Level = logrus.DebugLevel
-		l = cfg.GetLogger("s3")
-		l.Level = logrus.DebugLevel
+		log.SetCloudLogLevel(zerolog.DebugLevel)
+		l := log.GetLogger("fuse")
+		l.SetLevel(zerolog.DebugLevel)
+		l = log.GetLogger("s3")
+		l.SetLevel(zerolog.DebugLevel)
 	}
 
 	cloud := os.Getenv("CLOUD")
@@ -658,7 +656,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 
 	s.isTigris = TigrisDetected(flags)
 	s.isLocalTigris = LocalTigrisDetected(flags)
-	log.Infof("Tigris detected: %v, local: %v", s.isTigris, s.isLocalTigris)
+	testLog.Infof("Tigris detected: %v, local: %v", s.isTigris, s.isLocalTigris)
 
 	if s.isLocalTigris {
 		s.emulator = true

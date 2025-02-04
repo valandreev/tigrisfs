@@ -17,6 +17,7 @@ package cfg
 import (
 	"context"
 	"fmt"
+	"github.com/yandex-cloud/geesefs/log"
 	"net/http"
 	"net/url"
 	"os"
@@ -96,12 +97,12 @@ type ADLv2Config struct {
 }
 
 type AzureAuthorizerConfig struct {
-	Log      *LogHandle
+	Log      *log.LogHandle
 	TenantId string
 }
 
-var azbLog = GetLogger("azblob")
-var adls1Log = GetLogger("adlv1")
+var azbLog = log.GetLogger("azblob")
+var adls1Log = log.GetLogger("adlv1")
 
 func sptTest(spt *adal.ServicePrincipalToken) (autorest.Authorizer, error) {
 	err := spt.EnsureFresh()
@@ -195,7 +196,7 @@ func (c AzureAuthorizerConfig) Authorizer() (autorest.Authorizer, error) {
 	}
 	adEndpoint := strings.Trim(env.Values[auth.ActiveDirectoryEndpoint], "/") +
 		"/" + c.TenantId
-	c.Log.Debugf("looking for access token for %v", adEndpoint)
+	azbLog.Debug().Str("endpoint", adEndpoint).Msg("looking for access token")
 
 	accessTokensPath, err := cli.AccessTokensPath()
 	if err == nil {
@@ -203,7 +204,7 @@ func (c AzureAuthorizerConfig) Authorizer() (autorest.Authorizer, error) {
 		if err == nil {
 			for _, t := range accessTokens {
 				if t.Authority == adEndpoint {
-					c.Log.Debugf("found token for %v %v", t.Resource, t.Authority)
+					azbLog.Debug().Str("resource", t.Resource).Str("authority", t.Authority).Msg("found token")
 					var authorizer autorest.Authorizer
 					authorizer, err = tokenToAuthorizer(&t)
 					if err == nil {
@@ -217,7 +218,7 @@ func (c AzureAuthorizerConfig) Authorizer() (autorest.Authorizer, error) {
 		}
 	}
 
-	c.Log.Debug("falling back to MSI")
+	azbLog.Debug().Msg("falling back to MSI")
 	return msiToAuthorizer(env.GetMSI())
 }
 
@@ -328,7 +329,7 @@ func AzureBlobConfig(endpoint string, location string, storageType string) (conf
 				if account == "" {
 					if k, err := sect.GetKey("account"); err == nil {
 						account = k.Value()
-						azbLog.Debugf("Using azure account: %v", account)
+						azbLog.Debug().Str("account", account).Msg("Using azure account")
 					}
 				}
 				if key == "" {
@@ -341,7 +342,7 @@ func AzureBlobConfig(endpoint string, location string, storageType string) (conf
 	}
 	// at this point I have to have the account
 	if account == "" {
-		err = fmt.Errorf("Missing account: configure via AZURE_STORAGE_ACCOUNT "+
+		err = fmt.Errorf("missing account: configure via AZURE_STORAGE_ACCOUNT "+
 			"or %v/config", configDir)
 		return
 	}
@@ -355,7 +356,7 @@ func AzureBlobConfig(endpoint string, location string, storageType string) (conf
 			endpoints, resourceGroup, err = azureFindAccount(client, account)
 			if err != nil {
 				if key == "" {
-					err = fmt.Errorf("Missing key: configure via AZURE_STORAGE_KEY "+
+					err = fmt.Errorf("missing key: configure via AZURE_STORAGE_KEY "+
 						"or %v/config", configDir)
 					return
 				}
@@ -366,13 +367,13 @@ func AzureBlobConfig(endpoint string, location string, storageType string) (conf
 					endpoint = *endpoints.Dfs
 				}
 			}
-			azbLog.Debugf("Using detected account endpoint: %v", endpoint)
+			azbLog.Info().Str("endpoint", endpoint).Msg("Using detected account endpoint")
 
 			if key == "" {
 				var keysRes azblob.AccountListKeysResult
 				keysRes, err = client.ListKeys(context.TODO(), resourceGroup, account, "kerb")
 				if err != nil || len(*keysRes.Keys) == 0 {
-					err = fmt.Errorf("Missing key: configure via AZURE_STORAGE_KEY "+
+					err = fmt.Errorf("missing key: configure via AZURE_STORAGE_KEY "+
 						"or %v/config", configDir)
 					return
 				}
@@ -402,8 +403,7 @@ func AzureBlobConfig(endpoint string, location string, storageType string) (conf
 	if endpoint == "" {
 		endpoint = "https://" + account + "." + storageType + "." +
 			azure.PublicCloud.StorageEndpointSuffix
-		azbLog.Infof("Unable to detect endpoint for account %v, using %v",
-			account, endpoint)
+		azbLog.Info().Str("account", account).Str("endpoint", endpoint).Msg("Unable to detect endpoint for account")
 	}
 
 	config.Init()

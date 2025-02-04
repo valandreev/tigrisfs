@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 // Copyright 2015 - 2017 Ka-Hing Cheung
@@ -20,6 +21,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/yandex-cloud/geesefs/log"
 	"os"
 	"os/signal"
 	"strings"
@@ -29,11 +31,11 @@ import (
 	"github.com/kardianos/osext"
 	daemon "github.com/sevlyar/go-daemon"
 
-	"github.com/yandex-cloud/geesefs/core/cfg"
 	"github.com/yandex-cloud/geesefs/core"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
-var signalsToHandle = []os.Signal{ os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1 }
+var signalsToHandle = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1}
 
 func isSigUsr1(s os.Signal) bool {
 	return s == syscall.SIGUSR1
@@ -45,7 +47,7 @@ func kill(pid int, s os.Signal) (err error) {
 		return err
 	}
 
-	defer p.Release()
+	defer func() { mainLog.E(p.Release()) }()
 
 	err = p.Signal(s)
 	if err != nil {
@@ -58,7 +60,7 @@ const canDaemonize = true
 
 type Daemonizer struct {
 	result os.Signal
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 }
 
 func NewDaemonizer() *Daemonizer {
@@ -83,22 +85,26 @@ func (p *Daemonizer) Daemonize(logFile string) error {
 	if logFile == "stderr" || logFile == "/dev/stderr" {
 		ctx.LogFileName = "/dev/stderr"
 	}
-	child, err := ctx.Reborn()
 
+	child, err := ctx.Reborn()
 	if err != nil {
 		panic(fmt.Sprintf("unable to daemonize: %v", err))
 	}
 
 	if child != nil {
+		log.Debug().Int("pid", os.Getpid()).Msg("parent")
 		// attempt to wait for child to notify parent
 		if p.Wait() {
+			log.Debug().Int("pid", os.Getpid()).Msg("parent exiting")
 			os.Exit(0)
 		} else {
+			log.Debug().Int("pid", os.Getpid()).Msg("inval")
 			return syscall.EINVAL
 		}
 	} else {
+		log.Debug().Int("pid", os.Getpid()).Msg("child")
 		p.Cancel()
-		defer ctx.Release()
+		mainLog.E(ctx.Release())
 	}
 
 	return nil
@@ -106,7 +112,7 @@ func (p *Daemonizer) Daemonize(logFile string) error {
 
 func (p *Daemonizer) Cancel() {
 	// kill our own waiting goroutine
-	kill(os.Getpid(), syscall.SIGUSR1)
+	mainLog.E(kill(os.Getpid(), syscall.SIGUSR1))
 	p.wg.Wait()
 }
 
@@ -120,7 +126,7 @@ func (p *Daemonizer) NotifySuccess(success bool) {
 	if !success {
 		sig = syscall.SIGUSR2
 	}
-	kill(os.Getppid(), sig)
+	mainLog.E(kill(os.Getppid(), sig))
 }
 
 // Mount the file system based on the supplied arguments, returning a
@@ -145,7 +151,7 @@ func messagePath() {
 
 	// mount -a seems to run goofys without PATH
 	// usually fusermount is in /bin
-	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	mainLog.E(os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"))
 }
 
 func messageArg0() {

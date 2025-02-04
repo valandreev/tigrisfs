@@ -46,6 +46,10 @@ _s3cmd() {
   "$@"
 }
 
+_aws_cli() {
+  aws s3 --endpoint-url="$ENDPOINT" "$@"
+}
+
 _s3cmd mb s3://test
 
 export BUCKET_NAME="test"

@@ -115,6 +115,9 @@ type FlagStorage struct {
 	PProf      string
 	Foreground bool
 	LogFile    string
+	LogLevel   string
+	LogFormat  string
+	NoLogColor bool
 	DebugGrpc  bool
 
 	StatsInterval time.Duration
@@ -154,7 +157,7 @@ func (flags *FlagStorage) Cleanup() {
 	if flags.MountPointCreated != "" && flags.MountPointCreated != flags.MountPointArg {
 		err := os.Remove(flags.MountPointCreated)
 		if err != nil {
-			log.Errorf("rmdir %v = %v", flags.MountPointCreated, err)
+			cfgLog.Error().Msgf("rmdir %v = %v", flags.MountPointCreated, err)
 		}
 	}
 }
@@ -169,7 +172,6 @@ var defaultHTTPTransport = http.Transport{
 	DialContext: (&net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
-		DualStack: true,
 	}).DialContext,
 	MaxIdleConns:          1000,
 	MaxIdleConnsPerHost:   1000,

@@ -17,7 +17,7 @@ package core
 
 import (
 	"github.com/shirou/gopsutil/mem"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/log"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -25,7 +25,7 @@ import (
 	"syscall"
 )
 
-var bufferLog = cfg.GetLogger("buffer")
+var bufferLog = log.GetLogger("buffer")
 
 // BufferPool tracks memory used by cache buffers
 type BufferPool struct {
@@ -47,20 +47,20 @@ type BufferPool struct {
 
 func NewBufferPool(limit int64, gcInterval uint64) *BufferPool {
 
-	max, _ := getCgroupAvailableMem()
+	maxMem, _ := getCgroupAvailableMem()
 	m, err := mem.VirtualMemory()
 	if err != nil {
 		panic(err)
 	}
-	if max > 0 {
+	if maxMem > 0 {
 		// divide cgroup limit by 2 by default
-		max = max / 2
+		maxMem = maxMem / 2
 	}
-	if max <= 0 || max > m.Available {
-		max = m.Available
+	if maxMem <= 0 || maxMem > m.Available {
+		maxMem = m.Available
 	}
-	if limit > int64(max) {
-		limit = int64(max)
+	if limit > int64(maxMem) {
+		limit = int64(maxMem)
 	}
 
 	pool := BufferPool{
@@ -78,7 +78,7 @@ func (pool *BufferPool) recomputeBufferLimit() {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 
-	log.Debugf("limit: %v MB, buffers: %v MB, metadata: %v MB, system: %v MB",
+	mainLog.Debugf("limit: %v MB, buffers: %v MB, metadata: %v MB, system: %v MB",
 		pool.limit>>20, usedMem>>20, (ms.Alloc-uint64(usedMem))>>20, ms.Sys>>20)
 }
 
@@ -122,7 +122,7 @@ func (pool *BufferPool) UseUnlocked(size int64, ignoreMemoryLimit bool) error {
 				// free memory AND correct our limits, yet we still can't allocate.
 				// it's likely that we are simply asking for too much
 				atomic.AddInt64(&pool.cur, -size)
-				log.Errorf("Unable to allocate %d bytes, used %d bytes, limit is %d bytes", size, atomic.LoadInt64(&pool.cur), pool.max)
+				mainLog.Errorf("Unable to allocate %d bytes, used %d bytes, limit is %d bytes", size, atomic.LoadInt64(&pool.cur), pool.max)
 				return syscall.ENOMEM
 			}
 		}

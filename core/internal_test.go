@@ -4,10 +4,24 @@
 package core
 
 import (
-	. "gopkg.in/check.v1"
+	"os"
 	"testing"
+
+	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/log"
+	. "gopkg.in/check.v1"
 )
 
-func Test(t *testing.T) {
+var testLog = log.GetLogger("test")
+
+func TestCheckSuites(t *testing.T) {
 	TestingT(t)
+}
+
+func TestMain(m *testing.M) {
+	cfg.InitLoggers(&cfg.FlagStorage{LogLevel: "warn", Foreground: true, LogFormat: "console"})
+
+	log.DumpLoggers("TestMain")
+
+	os.Exit(m.Run())
 }

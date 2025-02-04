@@ -1,3 +1,5 @@
+//go:build (!linux || !arm64) && !windows
+
 // Copyright 2021 Yandex LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,25 +14,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cfg
+package log
 
 import (
-	"golang.org/x/sys/windows"
 	"os"
+	"syscall"
 )
 
 func redirectStdout(target *os.File) error {
-	err := windows.SetStdHandle(windows.STD_OUTPUT_HANDLE, windows.Handle(target.Fd()))
-	if err == nil {
-		os.Stdout = target
-	}
-	return err
+	return syscall.Dup2(int(target.Fd()), int(os.Stdout.Fd()))
 }
 
 func redirectStderr(target *os.File) error {
-	err := windows.SetStdHandle(windows.STD_ERROR_HANDLE, windows.Handle(target.Fd()))
-	if err == nil {
-		os.Stderr = target
-	}
-	return err
+	return syscall.Dup2(int(target.Fd()), int(os.Stderr.Fd()))
 }

@@ -18,7 +18,6 @@ package core
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 	"sync"
 	"syscall"
@@ -342,7 +341,7 @@ func (s *StorageBackendInitWrapper) Init(key string) error {
 	s.init.Do(func() {
 		s.initErr = s.StorageBackend.Init(s.initKey)
 		if s.initErr != nil {
-			log.Errorf("%T Init: %v", s.StorageBackend, s.initErr)
+			mainLog.Error().Err(s.initErr).Str("storage_backend", fmt.Sprintf("%T", s.StorageBackend)).Msg("Init error")
 			s.StorageBackend = StorageBackendInitError{
 				s.initErr,
 				*s.StorageBackend.Capabilities(),
@@ -361,87 +360,87 @@ func (s *StorageBackendInitWrapper) Bucket() string {
 }
 
 func (s *StorageBackendInitWrapper) HeadBlob(param *HeadBlobInput) (*HeadBlobOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.HeadBlob(param)
 }
 
 func (s *StorageBackendInitWrapper) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.ListBlobs(param)
 }
 
 func (s *StorageBackendInitWrapper) DeleteBlob(param *DeleteBlobInput) (*DeleteBlobOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.DeleteBlob(param)
 }
 
 func (s *StorageBackendInitWrapper) DeleteBlobs(param *DeleteBlobsInput) (*DeleteBlobsOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.DeleteBlobs(param)
 }
 
 func (s *StorageBackendInitWrapper) RenameBlob(param *RenameBlobInput) (*RenameBlobOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.RenameBlob(param)
 }
 
 func (s *StorageBackendInitWrapper) CopyBlob(param *CopyBlobInput) (*CopyBlobOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.CopyBlob(param)
 }
 
 func (s *StorageBackendInitWrapper) GetBlob(param *GetBlobInput) (*GetBlobOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.GetBlob(param)
 }
 
 func (s *StorageBackendInitWrapper) PutBlob(param *PutBlobInput) (*PutBlobOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.PutBlob(param)
 }
 
 func (s *StorageBackendInitWrapper) PatchBlob(param *PatchBlobInput) (*PatchBlobOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.PatchBlob(param)
 }
 
 func (s *StorageBackendInitWrapper) MultipartBlobBegin(param *MultipartBlobBeginInput) (*MultipartBlobCommitInput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.MultipartBlobBegin(param)
 }
 
 func (s *StorageBackendInitWrapper) MultipartBlobAdd(param *MultipartBlobAddInput) (*MultipartBlobAddOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.MultipartBlobAdd(param)
 }
 
 func (s *StorageBackendInitWrapper) MultipartBlobCopy(param *MultipartBlobCopyInput) (*MultipartBlobCopyOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.MultipartBlobCopy(param)
 }
 
 func (s *StorageBackendInitWrapper) MultipartBlobAbort(param *MultipartBlobCommitInput) (*MultipartBlobAbortOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.MultipartBlobAbort(param)
 }
 
 func (s *StorageBackendInitWrapper) MultipartBlobCommit(param *MultipartBlobCommitInput) (*MultipartBlobCommitOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.MultipartBlobCommit(param)
 }
 
 func (s *StorageBackendInitWrapper) MultipartExpire(param *MultipartExpireInput) (*MultipartExpireOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.MultipartExpire(param)
 }
 
 func (s *StorageBackendInitWrapper) RemoveBucket(param *RemoveBucketInput) (*RemoveBucketOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.RemoveBucket(param)
 }
 
 func (s *StorageBackendInitWrapper) MakeBucket(param *MakeBucketInput) (*MakeBucketOutput, error) {
-	s.Init("")
+	mainLog.E(s.Init(""))
 	return s.StorageBackend.MakeBucket(param)
 }
 
@@ -526,7 +525,7 @@ func (e StorageBackendInitError) GetBlob(param *GetBlobInput) (*GetBlobOutput, e
 				},
 				ContentType: PString("text/plain"),
 			},
-			Body: ioutil.NopCloser(strings.NewReader(errStr)),
+			Body: io.NopCloser(strings.NewReader(errStr)),
 		}, nil
 	} else {
 		return nil, syscall.ENOENT

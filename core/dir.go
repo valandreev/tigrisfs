@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-
 	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
@@ -264,7 +263,8 @@ func (parent *Inode) listObjectsSlurp(inode *Inode, startAfter string, sealEnd b
 		parent.fs.completeInflightListing(myList)
 		return
 	}
-	s3Log.Debug(resp)
+
+	S3Debug(s3Log, resp, "listObjectsSlurp")
 
 	if lock {
 		parent.mu.Lock()
@@ -602,7 +602,7 @@ func (dh *DirHandle) listObjectsFlat() (start string, err error) {
 		return
 	}
 
-	s3Log.Debug(resp)
+	S3Debug(s3Log, resp, "listObjectsFlat")
 
 	// See comment to intelligentListCut above
 	lastName, err := intelligentListCut(resp, dh.inode.fs.flags, cloud, prefix)
@@ -1167,7 +1167,7 @@ func (inode *Inode) SendDelete() {
 		}
 		inode.recordFlushError(err)
 		if err != nil {
-			log.Warnf("Failed to delete object %v: %v", key, err)
+			fuseLog.Warnf("Failed to delete object %v: %v", key, err)
 			inode.mu.Unlock()
 			inode.fs.WakeupFlusher()
 			return
@@ -1429,7 +1429,7 @@ func (dir *Inode) SendMkDir() {
 		dir.IsFlushing -= dir.fs.flags.MaxParallelParts
 		dir.recordFlushError(err)
 		if err != nil {
-			log.Warnf("Failed to create directory object %v: %v", key, err)
+			fuseLog.Warnf("Failed to create directory object %v: %v", key, err)
 			dir.fs.WakeupFlusher()
 			return
 		}
@@ -1760,10 +1760,10 @@ func renameInCache(fromInode *Inode, newParent *Inode, to string) {
 			err = os.Rename(oldFileName, newFileName)
 		}
 		if err != nil {
-			log.Warnf("Error renaming %v to %v: %v", oldFileName, newFileName, err)
+			fuseLog.Warnf("Error renaming %v to %v: %v", oldFileName, newFileName, err)
 			if fromInode.DiskCacheFD != nil {
 				err1 := fromInode.DiskCacheFD.Close()
-				log.Warnf("Error closing disk cache fd in renaming %v to %v: %v", oldFileName, newFileName, err1)
+				fuseLog.Warnf("Error closing disk cache fd in renaming %v to %v: %v", oldFileName, newFileName, err1)
 				fromInode.DiskCacheFD = nil
 				fromInode.fs.diskFdQueue.DeleteFD(fromInode)
 			}

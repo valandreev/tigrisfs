@@ -1,8 +1,11 @@
 #!/bin/bash
 
 set -o pipefail
+set -x
 
-if [ "$NO_PROXY" == "" ]; then
+env|grep NO_PROXY
+
+if [ "$NO_PROXY" != "" ]; then
   . `dirname $0`/s3.sh
 else
   . `dirname $0`/proxy.sh

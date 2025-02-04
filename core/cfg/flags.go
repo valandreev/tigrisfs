@@ -709,6 +709,23 @@ MISC OPTIONS:
 			Value: "",
 		},
 
+		cli.StringFlag{
+			Name:  "log-level",
+			Usage: "Log level. Default: info",
+			Value: "info",
+		},
+
+		cli.StringFlag{
+			Name:  "log-format",
+			Usage: "Log format. Default: console (for foreground) or json (for background)",
+			Value: "",
+		},
+
+		cli.BoolFlag{
+			Name:  "no-log-color",
+			Usage: "Disable log colors in console format",
+		},
+
 		cli.DurationFlag{
 			Name:  "print-stats",
 			Value: 30 * time.Second,
@@ -785,7 +802,7 @@ MISC OPTIONS:
 	cli.HelpPrinter = func(w io.Writer, templ string, data interface{}) {
 		w = tabwriter.NewWriter(w, 1, 8, 2, ' ', 0)
 		var tmplGet = template.Must(template.New("help").Funcs(funcMap).Parse(templ))
-		tmplGet.Execute(w, app)
+		cfgLog.E(tmplGet.Execute(w, app))
 	}
 
 	return
@@ -924,6 +941,9 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		DebugS3:       c.Bool("debug_s3"),
 		Foreground:    c.Bool("f"),
 		LogFile:       c.String("log-file"),
+		LogLevel:      c.String("log-level"),
+		LogFormat:     c.String("log-format"),
+		NoLogColor:    c.Bool("no-log-color"),
 		StatsInterval: c.Duration("print-stats"),
 		PProf:         c.String("pprof"),
 		DebugGrpc:     c.Bool("debug_grpc"),

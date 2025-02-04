@@ -120,7 +120,7 @@ func (inode *Inode) ResizeUnlocked(newSize uint64, finalizeFlushed bool) {
 	}
 	err := inode.fs.bufferPool.Use(allocated, true)
 	if err != nil {
-		log.Errorf("resizeUnlocked: use error %v: %v", inode.FullName(), err)
+		fuseLog.Errorf("resizeUnlocked: use error %v: %v", inode.FullName(), err)
 	}
 	inode.Attributes.Size = newSize
 }
@@ -141,7 +141,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 
 	if end > fh.inode.fs.getMaxFileSize() {
 		// File offset too large
-		log.Warnf(
+		fuseLog.Warnf(
 			"Maximum file size exceeded when writing %v bytes at offset %v to %v",
 			len(data), offset, fh.inode.FullName(),
 		)
@@ -160,7 +160,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 		// Oops, it's a deleted file. We don't support changing invisible files
 		err = fh.inode.fs.bufferPool.Use(-int64(len(data)), false)
 		if err != nil {
-			log.Errorf("writeFile: use error %v: %v", fh.inode.FullName(), err)
+			fuseLog.Errorf("writeFile: use error %v: %v", fh.inode.FullName(), err)
 		}
 		fh.inode.mu.Unlock()
 		return syscall.ENOENT
@@ -206,10 +206,10 @@ func (inode *Inode) OpenCacheFD() error {
 		cacheFileName := fs.flags.CachePath + "/" + inode.FullName()
 		var err error
 		err = os.MkdirAll(path.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0777)>>2))
-		log.Errorf("Couldn't mkdir %v: %v", cacheFileName, err)
+		fuseLog.Errorf("Couldn't mkdir %v: %v", cacheFileName, err)
 		inode.DiskCacheFD, err = os.OpenFile(cacheFileName, os.O_RDWR|os.O_CREATE, fs.flags.CacheFileMode)
 		if err != nil {
-			log.Errorf("Couldn't open %v: %v", cacheFileName, err)
+			fuseLog.Errorf("Couldn't open %v: %v", cacheFileName, err)
 			return err
 		} else {
 			inode.OnDisk = true
@@ -305,7 +305,7 @@ func (inode *Inode) LoadRange(offset, size uint64, readAheadSize uint64, ignoreM
 			inode.mu.Unlock()
 			err1 := inode.fs.bufferPool.Use(allocated, true)
 			if err1 != nil {
-				log.Errorf("loadRange: use error %v", err1)
+				fuseLog.Errorf("loadRange: use error %v", err1)
 			}
 			inode.mu.Lock()
 			// Return on error
@@ -342,7 +342,7 @@ func (inode *Inode) retryRead(cloud StorageBackend, key string, offset, size uin
 	// Maybe free some buffers first
 	err := inode.fs.bufferPool.Use(int64(size), ignoreMemoryLimit)
 	if err != nil {
-		log.Errorf("Error reading %v +%v of %v: %v", offset, size, key, err)
+		fuseLog.Errorf("Error reading %v +%v of %v: %v", offset, size, key, err)
 		inode.mu.Lock()
 		inode.readError = err
 		inode.buffers.RemoveLoading(offset, size)
@@ -371,7 +371,7 @@ func (inode *Inode) retryRead(cloud StorageBackend, key string, offset, size uin
 	if allocated != int64(size) {
 		err1 := inode.fs.bufferPool.Use(int64(allocated)-int64(size), true)
 		if err1 != nil {
-			log.Errorf("retryRead: use error %v: %v", inode.FullName(), err1)
+			fuseLog.Errorf("retryRead: use error %v: %v", inode.FullName(), err1)
 		}
 	}
 	inode.mu.Lock()
@@ -574,7 +574,7 @@ func (fh *FileHandle) ReadFile(sOffset int64, sLen int64) (data [][]byte, bytesR
 		err = requestErr
 		if mappedErr == syscall.ENOENT || mappedErr == syscall.ERANGE {
 			// Object is deleted or resized remotely (416). Discard local version
-			log.Warnf("File %v is deleted or resized remotely, discarding local changes", fh.inode.FullName())
+			fuseLog.Warnf("File %v is deleted or resized remotely, discarding local changes", fh.inode.FullName())
 			fh.inode.resetCache()
 		}
 		return
@@ -827,7 +827,7 @@ func (inode *Inode) sendRename() {
 						oldParent.mu.Unlock()
 					}
 				} else {
-					log.Warnf("Failed to copy %v to %v (rename): %v", from, key, err)
+					fuseLog.Warnf("Failed to copy %v to %v (rename): %v", from, key, err)
 					inode.mu.Lock()
 					inode.recordFlushError(err)
 					if inode.Parent == oldParent && inode.Name == oldName {
@@ -847,7 +847,7 @@ func (inode *Inode) sendRename() {
 				}
 			}
 			if err == nil {
-				log.Debugf("Copied %v to %v (rename)", from, key)
+				fuseLog.Debugf("Copied %v to %v (rename)", from, key)
 				delKey := from
 				delParent := oldParent
 				delName := oldName
@@ -886,7 +886,7 @@ func (inode *Inode) sendRename() {
 					inode.fs.completeInflightChange(delKey)
 				}
 				if err != nil {
-					log.Debugf("Failed to delete %v during rename, will retry later", delKey)
+					fuseLog.Debugf("Failed to delete %v during rename, will retry later", delKey)
 					// Emulate a deleted file
 					delParent.mu.Lock()
 					delParent.fs.mu.Lock()
@@ -900,7 +900,7 @@ func (inode *Inode) sendRename() {
 					delParent.fs.mu.Unlock()
 					delParent.mu.Unlock()
 				} else {
-					log.Debugf("Deleted %v - rename completed", from)
+					fuseLog.Debugf("Deleted %v - rename completed", from)
 					// Remove from DeletedChildren of the old parent
 					delParent.mu.Lock()
 					delete(delParent.dir.DeletedChildren, delName)
@@ -950,7 +950,7 @@ func (inode *Inode) sendUpdateMeta() {
 				s3Log.Warnf("Conflict detected (inode %v): File %v is deleted or resized remotely, discarding local changes", inode.Id, inode.FullName())
 				inode.resetCache()
 			}
-			log.Warnf("Error flushing metadata using COPY for %v: %v", key, err)
+			fuseLog.Warnf("Error flushing metadata using COPY for %v: %v", key, err)
 		} else if inode.CacheState == ST_MODIFIED && !inode.isStillDirty() {
 			inode.SetCacheState(ST_CACHED)
 			inode.SetAttrTime(time.Now())
@@ -994,9 +994,9 @@ func (inode *Inode) beginMultipartUpload(cloud StorageBackend, key string) {
 	}
 	inode.recordFlushError(err)
 	if err != nil {
-		log.Warnf("Failed to initiate multipart upload for %v: %v", key, err)
+		fuseLog.Warnf("Failed to initiate multipart upload for %v: %v", key, err)
 	} else {
-		log.Debugf("Started multi-part upload of object %v", key)
+		fuseLog.Debugf("Started multi-part upload of object %v", key)
 		inode.mpu = resp
 	}
 }
@@ -1318,19 +1318,19 @@ func (inode *Inode) patchFromBuffers(bufs []*FileBuffer, partSize uint64) {
 				s3Log.Warnf("File %s (inode %d) is deleted or resized remotely, discarding all local changes", key, inode.Id)
 				inode.resetCache()
 			default:
-				log.Errorf("Failed to load range %d-%d of file %s (inode %d) to patch it: %s", offset, offset+size, key, inode.Id, err)
+				fuseLog.Errorf("Failed to load range %d-%d of file %s (inode %d) to patch it: %s", offset, offset+size, key, inode.Id, err)
 			}
 			return
 		}
 		// File size or inode state may have been changed again, abort patch. These are local changes,
 		// so we don't need to drop any cached state here.
 		if inode.Attributes.Size < offset || inode.CacheState != ST_MODIFIED {
-			log.Warnf("Local state of file %s (inode %d) changed, aborting patch", key, inode.Id)
+			fuseLog.Warnf("Local state of file %s (inode %d) changed, aborting patch", key, inode.Id)
 			return
 		}
 		reader, dirtyBufs, err = inode.getMultiReader(offset, size)
 		if err != nil {
-			log.Errorf("File %s data in %v+%v is missing during PATCH attempt: %v", key, offset, size, err)
+			fuseLog.Errorf("File %s data in %v+%v is missing during PATCH attempt: %v", key, offset, size, err)
 			return
 		}
 	}
@@ -1351,7 +1351,7 @@ func (inode *Inode) sendPatch(offset, size uint64, r io.ReadSeeker, partSize uin
 		_, key = inode.oldParent.cloud()
 		key = appendChildName(key, inode.oldName)
 	}
-	log.Debugf("Patching range %d-%d of file %s (inode %d)", offset, offset+size, key, inode.Id)
+	fuseLog.Debugf("Patching range %d-%d of file %s (inode %d)", offset, offset+size, key, inode.Id)
 
 	inode.mu.Unlock()
 	inode.fs.addInflightChange(key)
@@ -1382,12 +1382,12 @@ func (inode *Inode) sendPatch(offset, size uint64, r io.ReadSeeker, partSize uin
 				inode.discardChanges(offset, size)
 			}
 		default:
-			log.Errorf("Failed to patch range %d-%d of file %s (inode %d): %s", offset, offset+size, key, inode.Id, err)
+			fuseLog.Errorf("Failed to patch range %d-%d of file %s (inode %d): %s", offset, offset+size, key, inode.Id, err)
 		}
 		return false
 	}
 
-	log.Debugf("Succesfully patched range %d-%d of file %s (inode %d), etag: %s", offset, offset+size, key, inode.Id, NilStr(resp.ETag))
+	fuseLog.Debugf("Succesfully patched range %d-%d of file %s (inode %d), etag: %s", offset, offset+size, key, inode.Id, NilStr(resp.ETag))
 	inode.updateFromFlush(MaxUInt64(inode.knownSize, offset+size), resp.ETag, resp.LastModified, nil)
 	return true
 }
@@ -1396,7 +1396,7 @@ func (inode *Inode) discardChanges(offset, size uint64) {
 	allocated := inode.buffers.RemoveRange(offset, size, nil)
 	err := inode.fs.bufferPool.Use(allocated, true)
 	if err != nil {
-		log.Errorf("discardChanges: use error %v", err)
+		fuseLog.Errorf("discardChanges: use error %v", err)
 	}
 }
 
@@ -1412,20 +1412,20 @@ func (inode *Inode) resetCache() {
 	allocated := inode.buffers.RemoveRange(0, 0xffffffffffffffff, nil)
 	err := inode.fs.bufferPool.Use(allocated, true)
 	if err != nil {
-		log.Errorf("Use error %v", err)
+		fuseLog.Errorf("Use error %v", err)
 	}
 	// Also remove the cache file from disk, if present
 	if inode.OnDisk {
 		cacheFileName := inode.fs.flags.CachePath + "/" + inode.FullName()
 		if inode.DiskCacheFD != nil {
 			err := inode.DiskCacheFD.Close()
-			log.Errorf("resetCache: close error %v: %v", cacheFileName, err)
+			fuseLog.Errorf("resetCache: close error %v: %v", cacheFileName, err)
 			inode.DiskCacheFD = nil
 			inode.fs.diskFdQueue.DeleteFD(inode)
 		}
 		err := os.Remove(cacheFileName)
 		if err != nil {
-			log.Errorf("Couldn't remove %v: %v", cacheFileName, err)
+			fuseLog.Errorf("Couldn't remove %v: %v", cacheFileName, err)
 		} else {
 			inode.OnDisk = false
 		}
@@ -1445,7 +1445,7 @@ func (inode *Inode) abortMultipart() {
 	go func(mpu *MultipartBlobCommitInput) {
 		_, abortErr := cloud.MultipartBlobAbort(mpu)
 		if abortErr != nil {
-			log.Warnf("Failed to abort multi-part upload of object %v: %v", key, abortErr)
+			fuseLog.Warnf("Failed to abort multi-part upload of object %v: %v", key, abortErr)
 		}
 	}(inode.mpu)
 	inode.mpu = nil
@@ -1523,12 +1523,12 @@ func (inode *Inode) flushSmallObject() {
 
 	inode.recordFlushError(err)
 	if err != nil {
-		log.Warnf("Failed to flush small file %v: %v", key, err)
+		fuseLog.Warnf("Failed to flush small file %v: %v", key, err)
 		if params.Metadata != nil {
 			inode.userMetadataDirty = 2
 		}
 	} else {
-		log.Debugf("Flushed small file %v (inode %v): etag=%v, size=%v", key, inode.Id, NilStr(resp.ETag), sz)
+		fuseLog.Debugf("Flushed small file %v (inode %v): etag=%v, size=%v", key, inode.Id, NilStr(resp.ETag), sz)
 		inode.buffers.SetState(0, sz, bufIds, BUF_CLEAN)
 		inode.updateFromFlush(sz, resp.ETag, resp.LastModified, resp.StorageClass)
 		if inode.CacheState == ST_CREATED || inode.CacheState == ST_MODIFIED {
@@ -1602,7 +1602,7 @@ func (inode *Inode) copyUnmodifiedParts(numParts uint64) (err error) {
 					err = syscall.ENOENT
 				} else {
 					inode.mu.Unlock()
-					log.Debugf("Copying unmodified range %v-%v MB of object %v",
+					fuseLog.Debugf("Copying unmodified range %v-%v MB of object %v",
 						offset/1024/1024, (offset+size+1024*1024-1)/1024/1024, key)
 					resp, requestErr := cloud.MultipartBlobCopy(&MultipartBlobCopyInput{
 						Commit:     mpu,
@@ -1612,7 +1612,7 @@ func (inode *Inode) copyUnmodifiedParts(numParts uint64) (err error) {
 						Size:       size,
 					})
 					if requestErr != nil {
-						log.Warnf("Failed to copy unmodified range %v-%v MB of object %v: %v",
+						fuseLog.Warnf("Failed to copy unmodified range %v-%v MB of object %v: %v",
 							offset/1024/1024, (offset+size+1024*1024-1)/1024/1024, key, requestErr)
 						err = requestErr
 					} else {
@@ -1641,7 +1641,7 @@ func (inode *Inode) flushPart(part uint64) {
 		_, key = inode.oldParent.cloud()
 		key = appendChildName(key, inode.oldName)
 	}
-	log.Debugf("Flushing part %v (%v-%v MB) of %v", part, partOffset/1024/1024, (partOffset+partSize)/1024/1024, key)
+	fuseLog.Debugf("Flushing part %v (%v-%v MB) of %v", part, partOffset/1024/1024, (partOffset+partSize)/1024/1024, key)
 
 	// Last part may be shorter
 	if inode.Attributes.Size < partOffset+partSize {
@@ -1656,7 +1656,7 @@ func (inode *Inode) flushPart(part uint64) {
 		_, err := inode.LoadRange(partOffset, partSize, 0, true)
 		if err == syscall.ESPIPE {
 			// Part is partly evicted, we can't flush it
-			log.Warnf("Could not flush part %v (%v-%v) of object %v because it's partly evicted", part, partOffset, partSize, key)
+			fuseLog.Warnf("Could not flush part %v (%v-%v) of object %v because it's partly evicted", part, partOffset, partSize, key)
 			return
 		}
 		mappedErr := mapAwsError(err)
@@ -1667,7 +1667,7 @@ func (inode *Inode) flushPart(part uint64) {
 			return
 		}
 		if err != nil {
-			log.Warnf("Failed to load part %v of object %v to flush it: %v", part, key, err)
+			fuseLog.Warnf("Failed to load part %v of object %v to flush it: %v", part, key, err)
 			return
 		}
 		// File size may have been changed again
@@ -1688,7 +1688,7 @@ func (inode *Inode) flushPart(part uint64) {
 	// Finally upload it
 	bufReader, bufIds, err := inode.getMultiReader(partOffset, partSize)
 	if err != nil {
-		log.Errorf("BUG: Failed to get MultiReader for flushed part %v (%v-%v) of object %v: %v", part, partOffset, partSize, key, err)
+		fuseLog.Errorf("BUG: Failed to get MultiReader for flushed part %v (%v-%v) of object %v: %v", part, partOffset, partSize, key, err)
 		return
 	}
 	bufLen := bufReader.Len()
@@ -1709,7 +1709,7 @@ func (inode *Inode) flushPart(part uint64) {
 	}
 	inode.recordFlushError(err)
 	if err != nil {
-		log.Warnf("Failed to flush part %v of object %v: %v", part, key, err)
+		fuseLog.Warnf("Failed to flush part %v of object %v: %v", part, key, err)
 		mappedErr := mapAwsError(err)
 		if mappedErr == syscall.ENOENT {
 			// Multipart upload is deleted
@@ -1726,7 +1726,7 @@ func (inode *Inode) flushPart(part uint64) {
 			// Do not evict modified header (first part)
 			doneState = BUF_FLUSHED_CUT
 		}
-		log.Debugf("Flushed part %v of object %v", part, key)
+		fuseLog.Debugf("Flushed part %v of object %v", part, key)
 		inode.buffers.SetState(partOffset, partSize, bufIds, doneState)
 	}
 }
@@ -1786,12 +1786,12 @@ func (inode *Inode) commitMultipartUpload(numParts, finalSize uint64) {
 	}
 	inode.recordFlushError(err)
 	if err != nil {
-		log.Warnf("Failed to finalize multi-part upload of object %v: %v", key, err)
+		fuseLog.Warnf("Failed to finalize multi-part upload of object %v: %v", key, err)
 		if inode.mpu.Metadata != nil {
 			inode.userMetadataDirty = 2
 		}
 	} else {
-		log.Debugf("Finalized multi-part upload of object %v: etag=%v, size=%v", key, NilStr(resp.ETag), finalSize)
+		fuseLog.Debugf("Finalized multi-part upload of object %v: etag=%v, size=%v", key, NilStr(resp.ETag), finalSize)
 		if inode.userMetadataDirty == 1 {
 			inode.userMetadataDirty = 0
 		}
@@ -1877,7 +1877,7 @@ func (inode *Inode) SetAttributes(size *uint64, mode *os.FileMode,
 	if size != nil && inode.Attributes.Size != *size {
 		if *size > fs.getMaxFileSize() {
 			// File size too large
-			log.Warnf(
+			fuseLog.Warnf(
 				"Maximum file size exceeded when trying to truncate %v to %v bytes",
 				inode.FullName(), *size,
 			)

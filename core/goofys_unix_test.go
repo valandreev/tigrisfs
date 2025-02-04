@@ -22,7 +22,6 @@ package core
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"runtime"
@@ -32,13 +31,10 @@ import (
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/pkg/xattr"
-	"github.com/sirupsen/logrus"
+	bench_embed "github.com/yandex-cloud/geesefs/bench"
+	test_embed "github.com/yandex-cloud/geesefs/test"
 	"golang.org/x/sys/unix"
 	. "gopkg.in/check.v1"
-
-	bench_embed "github.com/yandex-cloud/geesefs/bench"
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	test_embed "github.com/yandex-cloud/geesefs/test"
 )
 
 func (s *GoofysTest) mountCommon(t *C, mountPoint string, sameProc bool) {
@@ -59,12 +55,13 @@ func (s *GoofysTest) mountCommon(t *C, mountPoint string, sameProc bool) {
 			exe = "../geesefs"
 		}
 		c := exec.Command("/bin/bash", "-c",
-			exe+" --debug_fuse --debug_s3"+
+			exe+" --debug_fuse --debug_s3 --log-format=console --no-log-color"+
 				" --stat-cache-ttl "+s.fs.flags.StatCacheTTL.String()+
 				" --log-file \"mount_"+t.TestName()+".log\""+
 				" --endpoint \""+s.fs.flags.Endpoint+"\""+
 				region+
 				" "+s.fs.bucket+" "+mountPoint)
+		testLog.Debug().Str("cmd", c.String()).Msg("mounting")
 		err = c.Run()
 		t.Assert(err, IsNil)
 
@@ -87,7 +84,7 @@ func (s *GoofysTest) umount(t *C, mountPoint string) {
 	}
 	t.Assert(err, IsNil)
 
-	os.Remove(mountPoint)
+	testLog.E(os.Remove(mountPoint))
 }
 
 func FsyncDir(dir string) error {
@@ -97,7 +94,7 @@ func FsyncDir(dir string) error {
 	}
 	err = fh.Sync()
 	if err != nil {
-		fh.Close()
+		testLog.E(fh.Close())
 		return err
 	}
 	return fh.Close()
@@ -112,8 +109,8 @@ func (s *GoofysTest) SetUpSuite(t *C) {
 	if s.tmp == "" {
 		s.tmp = "/tmp"
 	}
-	os.WriteFile(s.tmp+"/fuse-test.sh", []byte(test_embed.FuseTestSh), 0755)
-	os.WriteFile(s.tmp+"/bench.sh", []byte(bench_embed.BenchSh), 0755)
+	testLog.E(os.WriteFile(s.tmp+"/fuse-test.sh", []byte(test_embed.FuseTestSh), 0755))
+	testLog.E(os.WriteFile(s.tmp+"/bench.sh", []byte(bench_embed.BenchSh), 0755))
 }
 
 func (s *GoofysTest) runFuseTest(t *C, mountPoint string, umount bool, cmdArgs ...string) {
@@ -134,14 +131,11 @@ func (s *GoofysTest) runFuseTest(t *C, mountPoint string, umount bool, cmdArgs .
 	cmd.Env = append(cmd.Env, "LC_ALL=C")
 	cmd.Env = append(cmd.Env, "CLEANUP=false")
 
-	if true {
-		logger := cfg.NewLogger("test")
-		lvl := logrus.InfoLevel
-		logger.Formatter.(*cfg.LogHandle).Lvl = &lvl
-		w := logger.Writer()
+	if false {
+		lg := testLog.With().Logger()
 
-		cmd.Stdout = w
-		cmd.Stderr = w
+		cmd.Stdout = lg
+		cmd.Stderr = lg
 	}
 
 	if chdir {
@@ -151,7 +145,9 @@ func (s *GoofysTest) runFuseTest(t *C, mountPoint string, umount bool, cmdArgs .
 		err = os.Chdir(mountPoint)
 		t.Assert(err, IsNil)
 
-		defer os.Chdir(oldCwd)
+		defer func() {
+			testLog.E(os.Chdir(oldCwd))
+		}()
 	}
 
 	err := cmd.Run()
@@ -231,7 +227,7 @@ func (s *GoofysTest) TestClientForkExec(t *C) {
 	t.Assert(err, IsNil)
 	defer func() { // Defer close file if it's not already closed.
 		if fh != nil {
-			fh.Close()
+			testLog.E(fh.Close())
 		}
 	}()
 	// Write to file.
@@ -252,7 +248,7 @@ func (s *GoofysTest) TestClientForkExec(t *C) {
 	t.Assert(err, IsNil)
 	fh = nil
 	// Check file content.
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "1.1;1.2;")
 
@@ -272,7 +268,7 @@ func (s *GoofysTest) TestClientForkExec(t *C) {
 	t.Assert(err, IsNil)
 	fh = nil
 	// Verify that the file is updated as per the new write.
-	content, err = ioutil.ReadFile(file)
+	content, err = os.ReadFile(file)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "2.1;2.2;")
 }
@@ -389,7 +385,7 @@ func (s *GoofysTest) TestCreateRenameBeforeCloseFuse(t *C) {
 	defer func() {
 		// close the file if the test failed so we can unmount
 		if fh != nil {
-			fh.Close()
+			testLog.E(fh.Close())
 		}
 	}()
 
@@ -409,7 +405,7 @@ func (s *GoofysTest) TestCreateRenameBeforeCloseFuse(t *C) {
 	t.Assert(ok, Equals, true)
 	t.Assert(pathErr.Err, Equals, syscall.ENOENT)
 
-	content, err := ioutil.ReadFile(to)
+	content, err := os.ReadFile(to)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "hello world")
 }
@@ -423,7 +419,7 @@ func (s *GoofysTest) TestRenameBeforeCloseFuse(t *C) {
 	from := mountPoint + "/newfile"
 	to := mountPoint + "/newfile2"
 
-	err := ioutil.WriteFile(from, []byte(""), 0600)
+	err := os.WriteFile(from, []byte(""), 0600)
 	t.Assert(err, IsNil)
 
 	fh, err := os.OpenFile(from, os.O_WRONLY, 0600)
@@ -431,7 +427,7 @@ func (s *GoofysTest) TestRenameBeforeCloseFuse(t *C) {
 	defer func() {
 		// close the file if the test failed so we can unmount
 		if fh != nil {
-			fh.Close()
+			testLog.E(fh.Close())
 		}
 	}()
 
@@ -451,7 +447,7 @@ func (s *GoofysTest) TestRenameBeforeCloseFuse(t *C) {
 	t.Assert(ok, Equals, true)
 	t.Assert(pathErr.Err, Equals, syscall.ENOENT)
 
-	content, err := ioutil.ReadFile(to)
+	content, err := os.ReadFile(to)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "hello world")
 }
@@ -536,7 +532,7 @@ func (s *GoofysTest) testNotifyRefresh(t *C, testInSubdir bool, testRefreshDir b
 
 	t.Assert(containsFile(testdir, "testnotify"), Equals, true)
 
-	buf, err := ioutil.ReadFile(testdir + "/testnotify")
+	buf, err := os.ReadFile(testdir + "/testnotify")
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, "foo")
 
@@ -548,7 +544,7 @@ func (s *GoofysTest) testNotifyRefresh(t *C, testInSubdir bool, testRefreshDir b
 	})
 	t.Assert(err, IsNil)
 
-	buf, err = ioutil.ReadFile(testdir + "/testnotify")
+	buf, err = os.ReadFile(testdir + "/testnotify")
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, "foo")
 
@@ -557,7 +553,7 @@ func (s *GoofysTest) testNotifyRefresh(t *C, testInSubdir bool, testRefreshDir b
 	t.Assert(err, IsNil)
 	time.Sleep(500 * time.Millisecond)
 
-	buf, err = ioutil.ReadFile(testdir + "/testnotify")
+	buf, err = os.ReadFile(testdir + "/testnotify")
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, "baur")
 
@@ -567,7 +563,7 @@ func (s *GoofysTest) testNotifyRefresh(t *C, testInSubdir bool, testRefreshDir b
 	})
 	t.Assert(err, IsNil)
 
-	buf, err = ioutil.ReadFile(testdir + "/testnotify")
+	buf, err = os.ReadFile(testdir + "/testnotify")
 	t.Assert(err, IsNil)
 	t.Assert(string(buf), Equals, "baur")
 
@@ -709,23 +705,23 @@ func (s *GoofysTest) TestConcurrentRefDeref(t *C) {
 			if i%2 == 0 {
 				runtime.Gosched()
 			}
-			fsint.LookUpInode(nil, &op)
+			testLog.E(fsint.LookUpInode(nil, &op))
 			wg.Done()
 		}(lookupOp)
 		go func(id fuseops.InodeID) {
-			fsint.ForgetInode(nil, &fuseops.ForgetInodeOp{
+			testLog.E(fsint.ForgetInode(nil, &fuseops.ForgetInodeOp{
 				Inode: id,
 				N:     1,
-			})
+			}))
 			wg.Done()
 		}(lookupOp.Entry.Child)
 
 		wg.Wait()
 
-		fsint.ForgetInode(nil, &fuseops.ForgetInodeOp{
+		testLog.E(fsint.ForgetInode(nil, &fuseops.ForgetInodeOp{
 			Inode: lookupOp.Entry.Child,
 			N:     1,
-		})
+		}))
 	}
 }
 

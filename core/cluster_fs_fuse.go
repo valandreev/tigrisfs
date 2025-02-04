@@ -5,6 +5,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"github.com/yandex-cloud/geesefs/log"
 	iofs "io/fs"
 	"sync/atomic"
 	"syscall"
@@ -12,7 +13,7 @@ import (
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 	"github.com/yandex-cloud/geesefs/core/cfg"
 	"github.com/yandex-cloud/geesefs/core/pb"
 	"google.golang.org/grpc"
@@ -794,8 +795,8 @@ func (fs *ClusterFsFuse) SetInodeAttributes(ctx context.Context, op *fuseops.Set
 		op.Inode,
 		false,
 		func(inode *Inode) {
-			fs.setInodeAttributes(inode, &op.Attributes.Size, &op.Attributes.Mtime,
-				&op.Attributes.Ctime, &op.Attributes.Mode)
+			clusterLog.E(fs.setInodeAttributes(inode, &op.Attributes.Size, &op.Attributes.Mtime,
+				&op.Attributes.Ctime, &op.Attributes.Mode))
 			if inode.isDir() {
 				op.Attributes.Nlink = 2
 			} else {
@@ -900,32 +901,30 @@ func MountCluster(
 ) (*Goofys, MountedFS, error) {
 
 	if flags.DebugS3 {
-		cfg.SetCloudLogLevel(logrus.DebugLevel)
+		log.SetCloudLogLevel(zerolog.DebugLevel)
 	}
 
 	mountConfig := &fuse.MountConfig{
 		FSName:                  bucketName,
 		Subtype:                 "geesefs",
 		Options:                 convertFuseOptions(flags),
-		ErrorLogger:             cfg.GetStdLogger(cfg.NewLogger("fuse"), logrus.ErrorLevel),
+		ErrorLogger:             log.GetStdLogger(fuseLog.Logger),
 		DisableWritebackCaching: true,
 		UseVectoredRead:         true,
 		FuseImpl:                fuse.FUSEImplMacFUSE,
 	}
 
 	if flags.DebugFuse {
-		fuseLog := cfg.GetLogger("fuse")
-		fuseLog.Level = logrus.DebugLevel
-		mountConfig.DebugLogger = cfg.GetStdLogger(fuseLog, logrus.DebugLevel)
+		fuseLog.SetLevel(zerolog.DebugLevel)
+		mountConfig.DebugLogger = log.GetStdLogger(fuseLog.Logger)
 	}
 
-	if flags.DebugFuse || flags.DebugMain {
-		log.Level = logrus.DebugLevel
+	if flags.DebugMain {
+		mainLog.SetLevel(zerolog.DebugLevel)
 	}
 
 	if flags.DebugGrpc {
-		grpcLog := cfg.GetLogger("grpc")
-		grpcLog.Level = logrus.DebugLevel
+		grpcLog.SetLevel(zerolog.DebugLevel)
 	}
 
 	srv := NewGrpcServer(flags)
@@ -948,8 +947,7 @@ func MountCluster(
 	pb.RegisterFsGrpcServer(srv, &ClusterFsGrpc{ClusterFs: fs})
 
 	go func() {
-		err := srv.Start()
-		if err != nil {
+		if err = srv.Start(); err != nil {
 			panic(err)
 		}
 	}()
@@ -960,7 +958,7 @@ func MountCluster(
 		mountConfig,
 	)
 	if err != nil {
-		err = fmt.Errorf("Mount: %v", err)
+		err = fmt.Errorf("mount: %v", err)
 		return nil, nil, err
 	}
 	fs.mfs = mfs

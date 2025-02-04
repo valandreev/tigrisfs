@@ -26,7 +26,6 @@ import (
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/sirupsen/logrus"
 	"github.com/winfsp/cgofuse/fuse"
-
 	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
@@ -118,7 +117,7 @@ func mapWinError(err error) int {
 	if err == nil {
 		return 0
 	}
-	if fuseLog.Level == logrus.DebugLevel {
+	if fuseLog.Level == zerolog.DebugLevel {
 		pc, _, _, _ := runtime.Caller(1)
 		details := runtime.FuncForPC(pc)
 		fuseLog.Debugf("%v: error %v", details, err)

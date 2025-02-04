@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/yandex-cloud/geesefs/core/cfg"
-
+	"github.com/yandex-cloud/geesefs/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 const OUTSTAGE_TIMEOUT = 10 * time.Second
 
-var connsLog = cfg.GetLogger("conns")
+var connsLog = log.GetLogger("conns")
 
 type Peer struct {
 	mu      sync.RWMutex
@@ -65,7 +65,7 @@ func (conns *ConnPool) UnaryConfiguarble(
 		defer func() {
 			if err != nil {
 				go func() {
-					connsLog.Info("error on request to ", nodeId, ", unmount")
+					connsLog.Infof("error on request to %v umount", nodeId)
 					_ = TryUnmount(conns.flags.MountPoint)
 				}()
 			}

@@ -16,12 +16,11 @@
 package core
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-
 	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/yandex-cloud/geesefs/log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -30,11 +29,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
-
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
 const AzuriteEndpoint = "http://127.0.0.1:8080/devstoreaccount1/"
@@ -114,14 +114,14 @@ type AZBlob struct {
 	tokenRenewGate   chan int
 }
 
-var azbLog = cfg.GetLogger("azblob")
+var azbLog = log.GetLogger("azblob")
 
 func NewAZBlob(container string, config *cfg.AZBlobConfig) (*AZBlob, error) {
 	po := azblob.PipelineOptions{
 		Log: pipeline.LogOptions{
 			Log: func(level pipeline.LogLevel, msg string) {
 				// naive casting kind of works because pipeline.INFO maps
-				// to 5 which is logrus.DEBUG
+				// to 5 which is zerolog.DEBUG
 				if level == pipeline.LogError {
 					// somehow some http errors
 					// are logged at Error, we
@@ -130,7 +130,7 @@ func NewAZBlob(container string, config *cfg.AZBlobConfig) (*AZBlob, error) {
 					// that here
 					level = pipeline.LogInfo
 				}
-				azbLog.Log(logrus.Level(uint32(level)), msg)
+				azbLog.Log(zerolog.Level(uint32(level)), msg)
 			},
 			ShouldLog: func(level pipeline.LogLevel) bool {
 				if level == pipeline.LogError {
@@ -141,7 +141,7 @@ func NewAZBlob(container string, config *cfg.AZBlobConfig) (*AZBlob, error) {
 					// that here
 					level = pipeline.LogInfo
 				}
-				return azbLog.IsLevelEnabled(logrus.Level(uint32(level)))
+				return azbLog.IsLevelEnabled(zerolog.Level(uint32(level)))
 			},
 		},
 		RequestLog: azblob.RequestLogOptions{
@@ -227,10 +227,10 @@ func (b *AZBlob) refreshToken() (*azblob.ContainerURL, error) {
 		// check again, because in the mean time maybe it's renewed
 		if b.tokenExpire.Before(time.Now().UTC()) {
 			b.mu.Unlock()
-			azbLog.Warnf("token expired: %v", b.tokenExpire)
+			azbLog.Warn().Msgf("token expired: %v", b.tokenExpire)
 			_, err := b.updateToken()
 			if err != nil {
-				azbLog.Errorf("Unable to refresh token: %v", err)
+				azbLog.Error().Err(err).Msg("Unable to refresh token")
 				return nil, syscall.EACCES
 			}
 		} else {
@@ -245,7 +245,7 @@ func (b *AZBlob) refreshToken() (*azblob.ContainerURL, error) {
 			go func() {
 				_, err := b.updateToken()
 				if err != nil {
-					azbLog.Errorf("Unable to refresh token: %v", err)
+					azbLog.Error().Err(err).Msg("Unable to refresh token")
 				}
 				<-b.tokenRenewGate
 			}()
@@ -257,7 +257,7 @@ func (b *AZBlob) refreshToken() (*azblob.ContainerURL, error) {
 			// actually access the blob store
 		default:
 			// another goroutine is already renewing
-			azbLog.Infof("token renewal already in progress")
+			azbLog.Info().Msg("token renewal already in progress")
 		}
 	} else {
 		b.mu.Unlock()
@@ -275,7 +275,7 @@ func parseSasToken(token string) (expire time.Time) {
 
 	se := parts.Get("se")
 	if se == "" {
-		azbLog.Error("token missing 'se' param")
+		azbLog.Error().Msg("token missing 'se' param")
 		return
 	}
 
@@ -293,17 +293,17 @@ func parseSasToken(token string) (expire time.Time) {
 func (b *AZBlob) updateToken() (*azblob.ContainerURL, error) {
 	token, err := b.sasTokenProvider()
 	if err != nil {
-		azbLog.Errorf("Unable to generate SAS token: %v", err)
+		azbLog.Error().Err(err).Msg("Unable to generate SAS token")
 		return nil, syscall.EACCES
 	}
 
 	expire := parseSasToken(token)
-	azbLog.Infof("token for %v refreshed, next expire at %v", b.bucket, expire.String())
+	azbLog.Info().Msgf("token for %v refreshed, next expire at %v", b.bucket, expire.String())
 
 	sUrl := b.bareURL + "?" + token
 	u, err := url.Parse(sUrl)
 	if err != nil {
-		azbLog.Errorf("Unable to construct service URL: %v", sUrl)
+		azbLog.Error().Err(err).Msgf("Unable to construct service URL: %v", sUrl)
 		return nil, syscall.EINVAL
 	}
 
@@ -396,7 +396,7 @@ func mapAZBError(err error) error {
 			if err != nil {
 				return err
 			} else {
-				azbLog.Errorf("code=%v status=%v err=%v", stgErr.ServiceCode(), stgErr.Response().Status, stgErr)
+				azbLog.Error().Msgf("code=%v status=%v err=%v", stgErr.ServiceCode(), stgErr.Response().Status, stgErr)
 				return stgErr
 			}
 		}

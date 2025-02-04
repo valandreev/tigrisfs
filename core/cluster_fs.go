@@ -15,12 +15,14 @@ import (
 	"github.com/jacobsa/fuse/fuseutil"
 	"github.com/yandex-cloud/geesefs/core/cfg"
 	"github.com/yandex-cloud/geesefs/core/pb"
+	"github.com/yandex-cloud/geesefs/log"
 	"google.golang.org/grpc"
 )
 
 var (
-	ownerLog = cfg.GetLogger("owner")
-	statLog  = cfg.GetLogger("stat")
+	ownerLog   = log.GetLogger("cluster_owner")
+	statLog    = log.GetLogger("cluster_stat")
+	clusterLog = log.GetLogger("cluster")
 )
 
 const (
@@ -388,7 +390,7 @@ func (fs *ClusterFs) releaseDirHandle(handleId fuseops.HandleID) {
 	dh := fs.Goofys.dirHandles[handleId]
 	fs.Goofys.mu.RUnlock()
 
-	dh.CloseDir()
+	clusterLog.E(dh.CloseDir())
 
 	fs.Goofys.mu.Lock()
 	delete(fs.Goofys.dirHandles, handleId)
@@ -448,7 +450,8 @@ func (fs *ClusterFs) lookUpInode1(parent *Inode, name string) (
 	error,
 ) {
 	if parent.findChildUnlocked(name) == nil {
-		parent.loadChild(name)
+		_, err := parent.loadChild(name)
+		clusterLog.Debug().Err(err).Str("child", name).Msg("lookupInode1")
 	}
 
 	parent.UpgradeToStateLock()
@@ -492,7 +495,7 @@ func (fs *ClusterFs) lookUpInode2(inode *Inode) (pbAttr *pb.Attributes, err erro
 		},
 		func(inode *Inode, inodeOwner NodeId) *pb.Owner {
 			var resp *pb.LookUpInode2Response
-			fs.Conns.Unary(inodeOwner, func(ctx context.Context, conn *grpc.ClientConn) error {
+			err = fs.Conns.Unary(inodeOwner, func(ctx context.Context, conn *grpc.ClientConn) error {
 				req := &pb.LookUpInode2Request{
 					InodeId: uint64(inode.Id),
 				}
@@ -906,7 +909,8 @@ func (fs *ClusterFs) createChild(parent *Inode, name string, mode iofs.FileMode)
 			child.Attributes.Mode = os.ModeDir | fs.Flags.DirMode
 		}
 	} else {
-		child.setFileMode(mode)
+		_, err := child.setFileMode(mode)
+		clusterLog.E(err)
 	}
 
 	// owner
@@ -996,7 +1000,7 @@ func (fs *ClusterFs) route(
 		inode := getInode()
 		inode.KeepOwnerLock()
 		if trySteal {
-			fs.trySteal(inode)
+			_, _ = fs.trySteal(inode)
 		}
 		switch {
 		case inode.owner == fs.Conns.id:

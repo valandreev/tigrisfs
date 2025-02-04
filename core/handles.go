@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog"
 	"net/url"
 	"os"
 	"sort"
@@ -31,8 +32,6 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/sirupsen/logrus"
-
 	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
@@ -341,13 +340,13 @@ func (inode *Inode) InflateAttributes() (attr fuseops.InodeAttributes) {
 }
 
 func (inode *Inode) logFuse(op string, args ...interface{}) {
-	if fuseLog.Level >= logrus.DebugLevel {
-		fuseLog.Debugln(op, inode.Id, inode.FullName(), args)
+	if fuseLog.GetLevel() <= zerolog.DebugLevel {
+		fuseLog.Logger.Debug().CallerSkipFrame(1).Str("op", op).Str("name", inode.FullName()).Uint64("inode", uint64(inode.Id)).Msgf("%+v", args)
 	}
 }
 
 func (inode *Inode) errFuse(op string, args ...interface{}) {
-	fuseLog.Errorln(op, inode.Id, inode.FullName(), args)
+	fuseLog.Errorf("%s %d %s %+v", op, inode.Id, inode.FullName(), args)
 }
 
 func (inode *Inode) ToDir() {
@@ -1031,7 +1030,8 @@ func (inode *Inode) DumpThis(fn string, withBuffers bool, noLock bool) (children
 		b = b[0 : len(b)-1]
 		dump += "\n" + b
 	}
-	log.Error(dump)
+
+	fuseLog.Errorf(dump)
 
 	return children
 }

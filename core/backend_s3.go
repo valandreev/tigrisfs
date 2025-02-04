@@ -22,6 +22,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/yandex-cloud/geesefs/log"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -69,7 +70,7 @@ func NewS3(bucket string, flags *cfg.FlagStorage, config *cfg.S3Config) (*S3Back
 	}
 
 	if config.ProjectId != "" {
-		log.Infof("Using Ceph multitenancy format bucket naming: %s", bucket)
+		s3Log.Info().Str("bucket", bucket).Msg("Using Ceph multitenancy format bucket naming")
 		bucket = config.ProjectId + ":" + bucket
 	}
 
@@ -119,6 +120,10 @@ type GCPCredResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
+func S3Debug(l *log.LogHandle, params any, msg string) {
+	l.Debug().CallerSkipFrame(1).Interface("params", params).Msg(msg)
+}
+
 func (s *S3Backend) TryIAM() (err error) {
 	credUrl := s.config.IAMUrl
 	if credUrl == "" {
@@ -135,7 +140,7 @@ func (s *S3Backend) TryIAM() (err error) {
 	if s.config.IAMFlavor == "gcp" {
 		req, err := http.NewRequest("GET", credUrl, nil)
 		if err != nil {
-			s3Log.Infof("Failed to get IAM token from %v: %v", credUrl, err)
+			s3Log.Warn().Str("credUrl", credUrl).Err(err).Msg("Failed to get IAM token")
 			return err
 		}
 		req.Header.Add("Metadata-Flavor", "Google")
@@ -144,7 +149,7 @@ func (s *S3Backend) TryIAM() (err error) {
 		resp, err = http.Get(credUrl)
 	}
 	if err != nil || resp == nil {
-		s3Log.Infof("Failed to get IAM token from %v: %v", credUrl, err)
+		s3Log.Warn().Str("credUrl", credUrl).Err(err).Msg("Failed to get IAM token")
 		if err == nil {
 			err = fmt.Errorf("Failed to get IAM token from %v: no response", credUrl)
 		}
@@ -156,19 +161,19 @@ func (s *S3Backend) TryIAM() (err error) {
 		body, err = ioutil.ReadAll(resp.Body)
 	}
 	if err != nil {
-		s3Log.Infof("Failed to get IAM token from %v: %v", credUrl, err)
+		s3Log.Warn().Str("credUrl", credUrl).Err(err).Msg("Failed to get IAM token")
 		return err
 	}
 	if s.config.IAMFlavor == "gcp" {
 		var creds GCPCredResponse
 		err = json.Unmarshal(body, &creds)
 		if err != nil {
-			s3Log.Infof("Bad response while trying to get IAM token from %v: %v", credUrl, err)
+			s3Log.Warn().Str("credUrl", credUrl).Err(err).Msg("Bad response while trying to get IAM token")
 			return err
 		}
 		if creds.AccessToken == "" {
-			s3Log.Infof("Failed to get IAM token, response text is %v", string(body))
-			return errors.New("Failed to get IAM token")
+			s3Log.Warn().Str("credUrl", credUrl).Msg("Failed to get IAM token, response text is empty")
+			return errors.New("failed to get IAM token")
 		}
 		token = creds.AccessToken
 		ttl = time.Duration(creds.ExpiresIn) * time.Second
@@ -176,11 +181,11 @@ func (s *S3Backend) TryIAM() (err error) {
 		var creds IMDSv1Response
 		err = json.Unmarshal(body, &creds)
 		if err != nil {
-			s3Log.Infof("Bad response while trying to get IAM token from %v: %v", credUrl, err)
+			s3Log.Warn().Str("credUrl", credUrl).Err(err).Msg("Bad response while trying to get IAM token")
 			return err
 		}
 		if creds.Code != "Success" {
-			s3Log.Infof("Failed to get IAM token, code is %v", creds.Code)
+			s3Log.Warn().Str("credUrl", credUrl).Str("code", creds.Code).Msg("Failed to get IAM token")
 			return errors.New(creds.Code)
 		}
 		token = creds.Token
@@ -197,7 +202,7 @@ func (s *S3Backend) TryIAM() (err error) {
 	s.iamRefreshTimer = time.AfterFunc(ttl, func() {
 		s.RefreshIAM()
 	})
-	s3Log.Infof("Successfully acquired IAM Token")
+	s3Log.Info().Msg("Successfully acquired IAM Token")
 	return nil
 }
 
@@ -299,7 +304,8 @@ func (s *S3Backend) detectBucketLocationByHEAD() (err error, isAws bool) {
 	}
 
 	allowFails := 3
-	for i := 0; i < allowFails; i++ {
+	i := 0
+	for ; i < allowFails; i++ {
 		resp, err = s.S3.Config.HTTPClient.Transport.RoundTrip(req)
 		if err != nil {
 			return
@@ -313,15 +319,14 @@ func (s *S3Backend) detectBucketLocationByHEAD() (err error, isAws bool) {
 		}
 	}
 
+	if i == allowFails {
+		return fmt.Errorf("detecting bucket location max number of attempts exceeded"), false
+	}
+
 	region := resp.Header["X-Amz-Bucket-Region"]
 	server := resp.Header["Server"]
 
-	s3Log.Debugf("HEAD %v = %v %v", u.String(), resp.StatusCode, region)
-	if region == nil {
-		for k, v := range resp.Header {
-			s3Log.Debugf("%v = %v", k, v)
-		}
-	}
+	s3Log.Debug().Str("url", u.String()).Int("statusCode", resp.StatusCode).Interface("region", region).Msg("HEAD request result")
 	if server != nil && server[0] == "AmazonS3" {
 		isAws = true
 	}
@@ -331,7 +336,7 @@ func (s *S3Backend) detectBucketLocationByHEAD() (err error, isAws bool) {
 		// note that this only happen if the bucket is in us-east-1
 		if len(s.config.Profile) == 0 && os.Getenv("AWS_ACCESS_KEY_ID") == "" {
 			s.awsConfig.Credentials = credentials.AnonymousCredentials
-			s3Log.Infof("anonymous bucket detected")
+			s3Log.Info().Msg("anonymous bucket detected")
 		}
 	case 301:
 		if len(region) != 0 && region[0] != *s.awsConfig.Region {
@@ -387,7 +392,7 @@ func (s *S3Backend) fallbackV2Signer() (err error) {
 		return syscall.EINVAL
 	}
 
-	s3Log.Infoln("Falling back to v2 signer")
+	s3Log.Infof("Falling back to v2 signer")
 	s.v2Signer = true
 	s.newS3()
 	return
@@ -825,11 +830,11 @@ func (s *S3Backend) mpuCopyPart(from string, to string, mpuId string, bytes stri
 		params.CopySourceSSECustomerKeyMD5 = &s.config.SseCDigest
 	}
 
-	s3Log.Debug(params)
+	S3Debug(s3Log, params, "UploadPartCopy")
 
 	resp, err := s.UploadPartCopy(params)
 	if err != nil {
-		s3Log.Warnf("UploadPartCopy %v = %v", params, err)
+		s3Log.Warn().Str("params", fmt.Sprintf("%v", params)).Err(err).Msg("UploadPartCopy failed")
 		return nil, err
 	}
 	return resp.CopyPartResult.ETag, nil
@@ -860,11 +865,11 @@ func (s *S3Backend) mpuCopyParts(size int64, from string, to string, mpuId strin
 	for _, cfg := range partSizes {
 		for i := 0; i < int(cfg.PartCount) && startOffset < size; i++ {
 			endOffset := MinInt64(startOffset+int64(cfg.PartSize), size)
-			bytes := fmt.Sprintf("bytes=%v-%v", startOffset, endOffset-1)
+			b := fmt.Sprintf("bytes=%v-%v", startOffset, endOffset-1)
 
 			partNum := int64(partIdx + 1)
 			wg.Go(func() error {
-				etag, err := s.mpuCopyPart(from, to, mpuId, bytes, partNum, srcEtag)
+				etag, err := s.mpuCopyPart(from, to, mpuId, b, partNum, srcEtag)
 				if err != nil {
 					return err
 				}
@@ -953,12 +958,12 @@ func (s *S3Backend) copyObjectMultipart(size int64, from string, to string, mpuI
 		},
 	}
 
-	s3Log.Debug(params)
+	S3Debug(s3Log, params, "CompleteMultipartUpload")
 
 	req, _ := s.CompleteMultipartUploadRequest(params)
 	err = req.Send()
 	if err != nil {
-		s3Log.Errorf("Complete MPU %v = %v", params, err)
+		s3Log.Error().Interface("params", params).Err(err).Msg("Complete MPU failed")
 	} else {
 		requestId = s.getRequestId(req)
 	}
@@ -1019,7 +1024,7 @@ func (s *S3Backend) CopyBlob(param *CopyBlobInput) (*CopyBlobOutput, error) {
 		MetadataDirective: &metadataDirective,
 	}
 
-	s3Log.Debug(params)
+	S3Debug(s3Log, params, "CopyObject")
 
 	if s.config.UseSSE {
 		params.ServerSideEncryption = &s.sseType
@@ -1048,7 +1053,7 @@ func (s *S3Backend) CopyBlob(param *CopyBlobInput) (*CopyBlobOutput, error) {
 	req.Config.HTTPClient.Timeout = 15 * time.Minute
 	err := req.Send()
 	if err != nil {
-		s3Log.Warnf("CopyObject %v = %v", params, err)
+		s3Log.Warn().Interface("params", params).Err(err).Msg("CopyObject failed")
 		return nil, err
 	}
 
@@ -1074,13 +1079,13 @@ func (s *S3Backend) GetBlob(param *GetBlobInput) (*GetBlobOutput, error) {
 	}
 
 	if param.Start != 0 || param.Count != 0 {
-		var bytes string
+		var b string
 		if param.Count != 0 {
-			bytes = fmt.Sprintf("bytes=%v-%v", param.Start, param.Start+param.Count-1)
+			b = fmt.Sprintf("bytes=%v-%v", param.Start, param.Start+param.Count-1)
 		} else {
-			bytes = fmt.Sprintf("bytes=%v-", param.Start)
+			b = fmt.Sprintf("bytes=%v-", param.Start)
 		}
-		get.Range = &bytes
+		get.Range = &b
 	}
 	// TODO handle IfMatch
 
@@ -1114,8 +1119,7 @@ func getDate(resp *http.Response) *time.Time {
 		if err == nil {
 			return &t
 		}
-		s3Log.Warnf("invalidate date for %v: %v",
-			resp.Request.URL.Path, date)
+		s3Log.Warn().Str("url", resp.Request.URL.Path).Msg("invalidate date")
 	}
 	return nil
 }
@@ -1253,7 +1257,8 @@ func (s *S3Backend) MultipartBlobAdd(param *MultipartBlobAddInput) (*MultipartBl
 		params.SSECustomerKey = &s.config.SseC
 		params.SSECustomerKeyMD5 = &s.config.SseCDigest
 	}
-	s3Log.Debug(params)
+
+	S3Debug(s3Log, params, "UploadPart")
 
 	req, resp := s.UploadPartRequest(&params)
 	err := req.Send()
@@ -1284,7 +1289,8 @@ func (s *S3Backend) MultipartBlobCopy(param *MultipartBlobCopyInput) (*Multipart
 		params.SSECustomerKey = &s.config.SseC
 		params.SSECustomerKeyMD5 = &s.config.SseCDigest
 	}
-	s3Log.Debug(params)
+
+	S3Debug(s3Log, params, "MultiPartBlobCopy")
 
 	req, resp := s.UploadPartCopyRequest(&params)
 	err := req.Send()
@@ -1319,7 +1325,7 @@ func (s *S3Backend) MultipartBlobCommit(param *MultipartBlobCommitInput) (*Multi
 		},
 	}
 
-	s3Log.Debug(mpu)
+	S3Debug(s3Log, mpu, "MultiPartBlobCommit request")
 
 	req, resp := s.CompleteMultipartUploadRequest(&mpu)
 	err := req.Send()
@@ -1327,7 +1333,7 @@ func (s *S3Backend) MultipartBlobCommit(param *MultipartBlobCommitInput) (*Multi
 		return nil, err
 	}
 
-	s3Log.Debug(resp)
+	S3Debug(s3Log, resp, "MultipartBlobCommit response")
 
 	return &MultipartBlobCommitOutput{
 		ETag:         resp.ETag,
@@ -1361,7 +1367,8 @@ func (s *S3Backend) MultipartExpire(param *MultipartExpireInput) (*MultipartExpi
 	if err != nil {
 		return nil, err
 	}
-	s3Log.Debug(mpu)
+
+	S3Debug(s3Log, mpu, "MultipartExpire request")
 
 	go func() {
 		now := time.Now()
@@ -1376,13 +1383,14 @@ func (s *S3Backend) MultipartExpire(param *MultipartExpireInput) (*MultipartExpi
 					UploadId: upload.UploadId,
 				}
 				resp, err := s.AbortMultipartUpload(params)
-				s3Log.Debug(resp)
+
+				S3Debug(s3Log, resp, "MultipartExpire abort")
 
 				if mapAwsError(err) == syscall.EACCES {
 					break
 				}
 			} else {
-				s3Log.Debugf("Keeping MPU Key=%v Id=%v", *upload.Key, *upload.UploadId)
+				s3Log.Debug().Str("key", *upload.Key).Str("id", *upload.UploadId).Msg("Keeping MPU")
 			}
 		}
 	}()
@@ -1391,10 +1399,10 @@ func (s *S3Backend) MultipartExpire(param *MultipartExpireInput) (*MultipartExpi
 }
 
 func (s *S3Backend) RemoveBucket(param *RemoveBucketInput) (*RemoveBucketOutput, error) {
-	s3Log.Infof("RemoveBucket %v", s.bucket)
+	s3Log.Info().Str("bucket", s.bucket).Msg("RemoveBucket called")
 	_, err := s.DeleteBucket(&s3.DeleteBucketInput{Bucket: &s.bucket})
 	if err != nil {
-		s3Log.Errorf("delete bucket %v: error %v", s.bucket, err)
+		s3Log.Error().Str("bucket", s.bucket).Err(err).Msg("Failed to delete bucket")
 		return nil, err
 	}
 	return &RemoveBucketOutput{}, nil
@@ -1432,7 +1440,7 @@ func (s *S3Backend) MakeBucket(param *MakeBucketInput) (*MakeBucketOutput, error
 				s3Log.Infof("waiting for bucket")
 				time.Sleep((time.Duration(i) + 1) * 2 * time.Second)
 			default:
-				s3Log.Errorf("Failed to tag bucket %v: %v", s.bucket, err)
+				s3Log.Error().Str("bucket", s.bucket).Err(err).Msg("Failed to tag bucket")
 				return nil, err
 			}
 		}

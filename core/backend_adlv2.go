@@ -17,7 +17,9 @@
 package core
 
 import (
+	"github.com/rs/zerolog"
 	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/yandex-cloud/geesefs/log"
 
 	"context"
 	"encoding/base64"
@@ -32,12 +34,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
 	adl2 "github.com/Azure/azure-sdk-for-go/services/storage/datalake/2018-11-09/storagedatalake"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
+	"github.com/google/uuid"
 )
 
 type ADLv2 struct {
@@ -53,7 +53,7 @@ type ADLv2 struct {
 const ADL2_CLIENT_REQUEST_ID = "X-Ms-Client-Request-Id"
 const ADL2_REQUEST_ID = "X-Ms-Request-Id"
 
-var adl2Log = cfg.GetLogger("adlv2")
+var adl2Log = log.GetLogger("adlv2")
 
 type ADLv2MultipartBlobCommitInput struct {
 	Size           uint64
@@ -65,20 +65,22 @@ func IsADLv2Endpoint(endpoint string) bool {
 	return strings.HasPrefix(endpoint, "abfs://")
 }
 
-func adl2LogResp(level logrus.Level, r *http.Response) {
+func adl2LogResp(level zerolog.Level, r *http.Response) {
 	if r == nil {
 		return
 	}
 
-	if adl2Log.IsLevelEnabled(level) {
+	if adl2Log.GetLevel() <= level {
 		requestId := r.Request.Header.Get(ADL2_CLIENT_REQUEST_ID)
 		respId := r.Header.Get(ADL2_REQUEST_ID)
-		// don't log anything if this is being called twice,
-		// which it is via ResponseInspector
 		if respId != "" {
-			adl2Log.Logf(level, "%v %v %v %v %v", r.Request.Method,
-				r.Request.URL.String(),
-				requestId, r.Status, respId)
+			adl2Log.Info().
+				Str("method", r.Request.Method).
+				Str("url", r.Request.URL.String()).
+				Str("request_id", requestId).
+				Str("status", r.Status).
+				Str("response_id", respId).
+				Msg("HTTP response")
 			r.Header.Del(ADL2_REQUEST_ID)
 		}
 	}
@@ -122,17 +124,15 @@ func NewADLv2(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv2Config) (*
 				r.Body = http.NoBody
 			}
 
-			if adl2Log.IsLevelEnabled(logrus.DebugLevel) {
+			if adl2Log.GetLevel() <= zerolog.DebugLevel {
 				requestId := r.Header.Get(ADL2_CLIENT_REQUEST_ID)
 				op := r.Method
 				switch op {
 				case http.MethodPost:
-					// this is a lease
 					leaseAction := r.Header.Get("X-Ms-Lease-Action")
 					leaseId := r.Header.Get("X-Ms-Lease-Id")
 					proposeLeaseId := r.Header.Get("X-Ms-Proposed-Lease-Id")
-					op += fmt.Sprintf(" %v (%v, %v)",
-						leaseAction, leaseId, proposeLeaseId)
+					op += fmt.Sprintf(" %v (%v, %v)", leaseAction, leaseId, proposeLeaseId)
 				case http.MethodPatch:
 					action := r.URL.Query().Get("action")
 					op += " " + action
@@ -140,13 +140,16 @@ func NewADLv2(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv2Config) (*
 						op += fmt.Sprintf("(%v)", r.ContentLength)
 					}
 				}
-				adl2Log.Debugf("%v %v %v", op,
-					r.URL.String(), requestId)
+				adl2Log.Debug().
+					Str("operation", op).
+					Str("url", r.URL.String()).
+					Str("request_id", requestId).
+					Msg("HTTP request")
 			}
 
 			r, err := p.Prepare(r)
 			if err != nil {
-				adl2Log.Error(err)
+				adl2Log.Err(err).Msg("prepare error")
 			}
 			return r, err
 		})
@@ -154,10 +157,10 @@ func NewADLv2(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv2Config) (*
 
 	LogResponse := func(p autorest.Responder) autorest.Responder {
 		return autorest.ResponderFunc(func(r *http.Response) error {
-			adl2LogResp(logrus.DebugLevel, r)
+			adl2LogResp(zerolog.DebugLevel, r)
 			err := p.Respond(r)
 			if err != nil {
-				adl2Log.Error(err)
+				adl2Log.Error().Err(err).Msg("response error")
 			}
 			return err
 		})
@@ -183,6 +186,7 @@ func NewADLv2(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv2Config) (*
 		},
 	}
 
+	adl2Log.Debug().Msg("New ADLv2 instance created")
 	return b, nil
 }
 
@@ -229,7 +233,7 @@ func adlv2ErrLogHeaders(errCode string, resp *http.Response) {
 			s.WriteString(k)
 			s.WriteString(" ")
 		}
-		adl2Log.Errorf("%v, sent: %v", errCode, s.String())
+		adl2Log.Error().Str("error_code", errCode).Str("sent_headers", s.String()).Msg("Error occurred")
 	case "InvalidHeaderValue":
 		var s strings.Builder
 		for k, v := range resp.Request.Header {
@@ -240,10 +244,9 @@ func adlv2ErrLogHeaders(errCode string, resp *http.Response) {
 				s.WriteString(" ")
 			}
 		}
-		adl2Log.Errorf("%v, sent: %v", errCode, s.String())
+		adl2Log.Error().Str("error_code", errCode).Str("sent_headers", s.String()).Msg("Error occurred")
 	case "InvalidSourceUri":
-		adl2Log.Errorf("SourceUri: %v",
-			resp.Request.Header.Get("X-Ms-Rename-Source"))
+		adl2Log.Error().Str("source_uri", resp.Request.Header.Get("X-Ms-Rename-Source")).Msg("Invalid SourceUri")
 	}
 }
 
@@ -253,12 +256,12 @@ func mapADLv2Error(resp *http.Response, err error, rawError bool) error {
 		if err != nil {
 			if detailedError, ok := err.(autorest.DetailedError); ok {
 				if urlErr, ok := detailedError.Original.(*url.Error); ok {
-					adl2Log.Errorf("url.Err: %T: %v %v %v %v %v", urlErr.Err, urlErr.Err, urlErr.Temporary(), urlErr.Timeout(), urlErr.Op, urlErr.URL)
+					adl2Log.Error().Err(err).Msgf("url.Err: %v %v %v %v", urlErr.Temporary(), urlErr.Timeout(), urlErr.Op, urlErr.URL)
 				} else {
-					adl2Log.Errorf("%T: %v", detailedError.Original, detailedError.Original)
+					adl2Log.Error().Msgf("%T: %v", detailedError.Original, detailedError.Original)
 				}
 			} else {
-				adl2Log.Errorf("unknown error: %v", err)
+				adl2Log.Error().Err(err).Msg("Unknown error occurred")
 			}
 			return syscall.EAGAIN
 		} else {
@@ -273,14 +276,14 @@ func mapADLv2Error(resp *http.Response, err error, rawError bool) error {
 			if err == nil {
 				return ADL2Error{adlErr}
 			} else {
-				adl2Log.Errorf("cannot parse error: %v", err)
+				adl2Log.Error().Err(err).Msg("cannot parse error")
 				return syscall.EAGAIN
 			}
 		} else {
 			switch resp.StatusCode {
 			case http.StatusBadRequest:
-				if !adl2Log.IsLevelEnabled(logrus.DebugLevel) {
-					adl2LogResp(logrus.ErrorLevel, resp)
+				if adl2Log.GetLevel() <= zerolog.DebugLevel {
+					adl2LogResp(zerolog.ErrorLevel, resp)
 				}
 				adlErr, err := decodeADLv2Error(resp.Body)
 				if err == nil {
@@ -294,10 +297,10 @@ func mapADLv2Error(resp *http.Response, err error, rawError bool) error {
 			if err != nil {
 				return err
 			} else {
-				if !adl2Log.IsLevelEnabled(logrus.DebugLevel) {
-					adl2LogResp(logrus.ErrorLevel, resp)
+				if adl2Log.GetLevel() <= zerolog.DebugLevel {
+					adl2LogResp(zerolog.ErrorLevel, resp)
 				}
-				adl2Log.Errorf("resp: %#v %v", resp, err)
+				adl2Log.Error().Interface("response", resp).Msg("HTTP error response")
 				return syscall.EINVAL
 			}
 		}
@@ -355,15 +358,14 @@ func adlv2ToBlobItem(res adl2.ReadCloser, objKey string) BlobItemOutput {
 
 			s := strings.SplitN(kv, "=", 2)
 			if len(s) != 2 {
-				adl2Log.Warnf("Dropping property: %v: %v", objKey, kv)
+				adl2Log.Warn().Str("object_key", objKey).Str("property", kv).Msg("Dropping property")
 				continue
 			}
 			key := strings.TrimSpace(s[0])
 			value := strings.TrimSpace(s[1])
 			buf, err := base64.StdEncoding.DecodeString(value)
 			if err != nil {
-				adl2Log.Warnf("Unable to decode property: %v: %v",
-					objKey, key)
+				adl2Log.Warn().Str("object_key", objKey).Str("property_key", key).Msg("Unable to decode property")
 				continue
 			}
 			metadata[key] = PString(string(buf))
@@ -749,8 +751,7 @@ func (b *ADLv2) MultipartBlobBegin(param *MultipartBlobBeginInput) (*MultipartBl
 			if err != nil {
 				err2 := b.lease(adl2.Release, param.Key, leaseId, 0, "")
 				if err2 != nil {
-					adl2Log.Errorf("Unable to release lease for %v: %v",
-						param.Key, err2)
+					adl2Log.Error().Err(err2).Msgf("Unable to release lease for %v", param.Key)
 				}
 			}
 		}()
@@ -860,8 +861,7 @@ func (b *ADLv2) MultipartBlobCommit(param *MultipartBlobCommitInput) (*Multipart
 
 		err2 := b.lease(adl2.Release, *param.Key, leaseId, 0, "")
 		if err2 != nil {
-			adl2Log.Errorf("Unable to release lease for %v: %v",
-				*param.Key, err2)
+			adl2Log.Error().Err(err2).Msgf("Unable to release lease for %v", *param.Key)
 		}
 	}()
 

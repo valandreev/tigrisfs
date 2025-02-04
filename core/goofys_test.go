@@ -40,13 +40,10 @@ NOTES:
 package core
 
 import (
-	"github.com/yandex-cloud/geesefs/core/cfg"
-
 	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"reflect"
@@ -63,6 +60,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/jacobsa/fuse/fuseops"
+	"github.com/yandex-cloud/geesefs/core/cfg"
 	. "gopkg.in/check.v1"
 )
 
@@ -79,7 +77,7 @@ func (s *GoofysTest) TestGetRootInode(t *C) {
 	t.Assert(root.Id, Equals, fuseops.InodeID(fuseops.RootInodeID))
 }
 
-func (s *GoofysTest) TestSetup(t *C) {
+func (*GoofysTest) TestSetup(_ *C) {
 }
 
 func (s *GoofysTest) TestLookUpInode(t *C) {
@@ -141,9 +139,6 @@ func (s *GoofysTest) readDirFully(t *C, dh *DirHandle) (entries []*Inode) {
 		entries = append(entries, en)
 		dh.Next(en.Name)
 	}
-
-	dh.mu.Unlock()
-	return
 }
 
 func nameMap(entries []*Inode) (names map[string]bool) {
@@ -163,14 +158,18 @@ func namesOf(entries []*Inode) (names []string) {
 
 func (s *GoofysTest) assertEntries(t *C, in *Inode, names []string) {
 	dh := in.OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	t.Assert(namesOf(s.readDirFully(t, dh)), DeepEquals, names)
 }
 
 func (s *GoofysTest) assertHasEntries(t *C, in *Inode, names []string) {
 	dh := in.OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	m := nameMap(s.readDirFully(t, dh))
 	var found []string
@@ -194,7 +193,9 @@ func (s *GoofysTest) readDirIntoCache(t *C, inode fuseops.InodeID) {
 		}
 		dh.Next(en.Name)
 	}
-	dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 	dh.mu.Unlock()
 }
 
@@ -256,7 +257,9 @@ func (s *GoofysTest) TestReadDirWithExternalChanges(t *C) {
 func (s *GoofysTest) TestReadDir(t *C) {
 	// test listing /
 	dh := s.getRoot(t).OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	s.assertHasEntries(t, s.getRoot(t), []string{"dir1", "dir2", "dir4", "empty_dir", "empty_dir2", "file1", "file2", "zero"})
 
@@ -279,7 +282,9 @@ func (s *GoofysTest) TestReadDir(t *C) {
 func (s *GoofysTest) TestReadFiles(t *C) {
 	parent := s.getRoot(t)
 	dh := parent.OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	entries := s.readDirFully(t, dh)
 
@@ -344,7 +349,9 @@ func (s *GoofysTest) TestCreateFiles(t *C) {
 	resp, err := s.cloud.GetBlob(&GetBlobInput{Key: fileName})
 	t.Assert(err, IsNil)
 	t.Assert(resp.HeadBlobOutput.Size, DeepEquals, uint64(0))
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 
 	_, err = s.getRoot(t).LookUp(fileName, false)
 	t.Assert(err, IsNil)
@@ -367,7 +374,9 @@ func (s *GoofysTest) TestCreateFiles(t *C) {
 	if _, adlv1 := s.cloud.(*ADLv1); !adlv1 {
 		t.Assert(resp.HeadBlobOutput.Size, Equals, uint64(1))
 	}
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 }
 
 func (s *GoofysTest) TestUnlink(t *C) {
@@ -805,12 +814,15 @@ func (s *GoofysTest) TestReadRandom(t *C) {
 	for i := 0; i < 10; i++ {
 		offset := src.Int63() % (size / 2)
 
-		fr.Seek(offset, 0)
-		truth.Seek(offset, 0)
+		_, err = fr.Seek(offset, 0)
+		t.Assert(err, IsNil)
+		_, err = truth.Seek(offset, 0)
+		t.Assert(err, IsNil)
 
 		// read 5MB+1 from that offset
-		nread := int64(5*1024*1024 + 1)
-		CompareReader(io.LimitReader(fr, nread), io.LimitReader(truth, nread), 0)
+		nRead := int64(5*1024*1024 + 1)
+		_, err = CompareReader(io.LimitReader(fr, nRead), io.LimitReader(truth, nRead), 0)
+		t.Assert(err, IsNil)
 	}
 }
 
@@ -982,11 +994,11 @@ func (s *GoofysTest) TestRenameOpenedUnmodified(t *C) {
 
 	in, err = s.fs.LookupPath("file10")
 	t.Assert(err == nil || err == syscall.ENOENT, Equals, true)
-	if err == syscall.ENOENT {
-		_, fh, err = root.Create("file10")
+	if err == nil {
+		fh, err = in.OpenFile()
 		t.Assert(err, IsNil)
 	} else {
-		fh, err = in.OpenFile()
+		_, fh, err = root.Create("file10")
 		t.Assert(err, IsNil)
 	}
 
@@ -998,8 +1010,7 @@ func (s *GoofysTest) TestRenameOpenedUnmodified(t *C) {
 
 	fh.Release()
 
-	err = s.fs.SyncTree(nil)
-	t.Assert(err, IsNil)
+	s.fs.SyncTree(nil)
 
 	// Check that the file is actually renamed
 	_, err = s.cloud.HeadBlob(&HeadBlobInput{Key: "file10"})
@@ -1046,7 +1057,7 @@ func (s *GoofysTest) TestBackendListPagination(t *C) {
 		defer func() {
 			var wg sync.WaitGroup
 
-			for b, _ := range blobs {
+			for b := range blobs {
 				SmallActionsGate <- 1
 				wg.Add(1)
 
@@ -1067,7 +1078,9 @@ func (s *GoofysTest) TestBackendListPagination(t *C) {
 	s.setupBlobs(s.cloud, t, blobs)
 
 	dh := root.OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	children := namesOf(s.readDirFully(t, dh))
 	t.Assert(children, DeepEquals, expect)
@@ -1238,10 +1251,10 @@ func (s *GoofysTest) TestRenameDir(t *C) {
 	err = root.Rename("new_dir2", root, "new_dir3")
 	t.Assert(err, IsNil)
 
-	new, err := s.fs.LookupPath("new_dir3/dir3/file4")
+	n, err := s.fs.LookupPath("new_dir3/dir3/file4")
 	t.Assert(err, IsNil)
-	t.Assert(new, NotNil)
-	t.Assert(old.Id, Equals, new.Id)
+	t.Assert(n, NotNil)
+	t.Assert(old.Id, Equals, n.Id)
 
 	_, err = s.fs.LookupPath("new_dir2/dir3")
 	t.Assert(err, Equals, syscall.ENOENT)
@@ -1428,6 +1441,7 @@ func (s *GoofysTest) TestPutMimeType(t *C) {
 	err = root.Rename(jpg, root, file)
 	t.Assert(err, IsNil)
 	toInode, err := s.fs.LookupPath(file)
+	t.Assert(err, IsNil)
 	err = toInode.SyncFile()
 	t.Assert(err, IsNil)
 
@@ -1442,6 +1456,7 @@ func (s *GoofysTest) TestPutMimeType(t *C) {
 	err = root.Rename(file, root, jpg2)
 	t.Assert(err, IsNil)
 	toInode, err = s.fs.LookupPath(jpg2)
+	t.Assert(err, IsNil)
 	err = toInode.SyncFile()
 	t.Assert(err, IsNil)
 
@@ -1603,6 +1618,7 @@ func (s *GoofysTest) TestIssue162(t *C) {
 	t.Assert(err, IsNil)
 
 	resp, err := s.cloud.HeadBlob(&HeadBlobInput{Key: "dir1/myfile.jpg"})
+	t.Assert(err, IsNil)
 	t.Assert(resp.Size, Equals, uint64(3))
 }
 
@@ -1917,19 +1933,25 @@ func (s *GoofysTest) TestReadDirSlurpHeuristic(t *C) {
 	dir1, err := s.fs.LookupPath("dir1")
 	t.Assert(err, IsNil)
 	dh1 := dir1.OpenDir()
-	defer dh1.CloseDir()
+	defer func() {
+		testLog.E(dh1.CloseDir())
+	}()
 	score := root.seqOpenDirScore
 
 	dir2, err := s.fs.LookupPath("dir2")
 	t.Assert(err, IsNil)
 	dh2 := dir2.OpenDir()
-	defer dh2.CloseDir()
+	defer func() {
+		testLog.E(dh2.CloseDir())
+	}()
 	t.Assert(root.seqOpenDirScore, Equals, score+1)
 
 	dir3, err := s.fs.LookupPath("dir4")
 	t.Assert(err, IsNil)
 	dh3 := dir3.OpenDir()
-	defer dh3.CloseDir()
+	defer func() {
+		testLog.E(dh3.CloseDir())
+	}()
 	t.Assert(root.seqOpenDirScore, Equals, score+2)
 }
 
@@ -1963,12 +1985,16 @@ func (s *GoofysTest) TestReadDirCached(t *C) {
 	s.getRoot(t).dir.seqOpenDirScore = 2
 	dh := s.getRoot(t).OpenDir()
 	entries := s.readDirFully(t, dh)
-	dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 	s.disableS3()
 
 	dh = s.getRoot(t).OpenDir()
 	cachedEntries := s.readDirFully(t, dh)
-	dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	t.Assert(len(entries) > 0, Equals, true)
 	t.Assert(cachedEntries, DeepEquals, entries)
@@ -2256,7 +2282,9 @@ func (s *GoofysTest) TestReadDirLarge(t *C) {
 	s.setupBlobs(s.cloud, t, blobs)
 
 	dh := root.OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	children := namesOf(s.readDirFully(t, dh))
 	sort.Strings(children)
@@ -2341,7 +2369,9 @@ func (s *GoofysTest) TestVFS(t *C) {
 
 	resp, err := cloud2.GetBlob(&GetBlobInput{Key: "cloud2Prefix/testfile"})
 	t.Assert(err, IsNil)
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 
 	err = s.getRoot(t).Rename("file1", in, "file2")
 	t.Assert(err, Equals, syscall.EINVAL)
@@ -2379,7 +2409,9 @@ func (s *GoofysTest) TestVFS(t *C) {
 
 	resp, err = cloud2.GetBlob(&GetBlobInput{Key: "cloud2Prefix/subdir/testfile2"})
 	t.Assert(err, IsNil)
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 
 	err = subdir.Rename("testfile2", in, "testfile2")
 	t.Assert(err, IsNil)
@@ -2389,7 +2421,9 @@ func (s *GoofysTest) TestVFS(t *C) {
 
 	resp, err = cloud2.GetBlob(&GetBlobInput{Key: "cloud2Prefix/testfile2"})
 	t.Assert(err, IsNil)
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 
 	err = in.Rename("testfile2", subdir, "testfile2")
 	t.Assert(err, IsNil)
@@ -2399,7 +2433,9 @@ func (s *GoofysTest) TestVFS(t *C) {
 
 	resp, err = cloud2.GetBlob(&GetBlobInput{Key: "cloud2Prefix/subdir/testfile2"})
 	t.Assert(err, IsNil)
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 }
 
 func (s *GoofysTest) TestMountsList(t *C) {
@@ -2656,7 +2692,9 @@ func (s *GoofysTest) testMountsNested(t *C, cloud StorageBackend,
 
 	resp, err := cloud.GetBlob(&GetBlobInput{Key: "test_nested/2/testfile"})
 	t.Assert(err, IsNil)
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 
 	//_, err = s.fs.LookupPath("dir5/in/a/dir/testfile")
 	//t.Assert(err, IsNil)
@@ -2667,7 +2705,9 @@ func (s *GoofysTest) testMountsNested(t *C, cloud StorageBackend,
 
 	resp, err = cloud.GetBlob(&GetBlobInput{Key: "test_nested/1/dir/testfile"})
 	t.Assert(err, IsNil)
-	defer resp.Body.Close()
+	defer func() {
+		testLog.E(resp.Body.Close())
+	}()
 
 	s.assertEntries(t, in, []string{"in"})
 
@@ -2681,7 +2721,7 @@ func verifyFileData(t *C, mountPoint string, path string, content *string) {
 		mountPoint = mountPoint + "/"
 	}
 	path = mountPoint + path
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	comment := Commentf("failed while verifying %v", path)
 	if content != nil {
 		t.Assert(err, IsNil, comment)
@@ -2769,7 +2809,9 @@ func (s *GoofysTest) TestReadDirDash(t *C) {
 
 	// Read the directory and verify its contents.
 	dh := root.OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 
 	children := namesOf(s.readDirFully(t, dh))
 	t.Assert(checkSortedListsAreEqual(children, expect), IsNil)
@@ -2792,7 +2834,7 @@ func (s *GoofysTest) TestWriteListFlush(t *C) {
 	// in should still be valid
 	t.Assert(in.Parent, NotNil)
 	t.Assert(in.Parent, Equals, dir)
-	fh.inode.SyncFile()
+	testLog.E(fh.inode.SyncFile())
 
 	s.assertEntries(t, dir, []string{"file1"})
 }
@@ -2845,7 +2887,9 @@ func (s *GoofysTest) TestWriteUnlinkFlush(t *C) {
 	s.disableS3()
 
 	dh := dir.OpenDir()
-	defer dh.CloseDir()
+	defer func() {
+		testLog.E(dh.CloseDir())
+	}()
 	t.Assert(namesOf(s.readDirFully(t, dh)), Not(includes{}), "deleted")
 }
 

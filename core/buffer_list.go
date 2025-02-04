@@ -718,13 +718,6 @@ func appendZero(data [][]byte, zeroLen uint64) [][]byte {
 	return data
 }
 
-func min(a, b uint64) uint64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (l *BufferList) GetHoles(offset, size uint64) (holes []Range, loading bool, flushCleared bool) {
 	curOffset := offset
 	endOffset := offset + size

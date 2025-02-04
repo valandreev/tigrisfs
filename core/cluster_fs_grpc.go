@@ -416,7 +416,7 @@ func (fs *ClusterFsGrpc) SetInodeAttributes(ctx context.Context, req *pb.SetInod
 	if req.Mode != nil {
 		mode = iofs.FileMode(*req.Mode)
 	}
-	fs.setInodeAttributes(inode, &size, &mtime, &ctime, &mode)
+	clusterLog.E(fs.setInodeAttributes(inode, &size, &mtime, &ctime, &mode))
 
 	inode.KeepOwnerUnlock()
 
