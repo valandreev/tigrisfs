@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	s4 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/stretchr/testify/require"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
 func tigrisDetected(flags *cfg.FlagStorage) (bool, bool) {

@@ -700,7 +700,7 @@ MISC OPTIONS:
 
 		cli.BoolFlag{
 			Name:  "f",
-			Usage: "Run geesefs in foreground.",
+			Usage: "Run tigrisfs in foreground.",
 		},
 
 		cli.StringFlag{
@@ -761,7 +761,7 @@ MISC OPTIONS:
 	}
 
 	app = &cli.App{
-		Name:     "geesefs",
+		Name:     "tigrisfs",
 		Version:  Version,
 		Usage:    "Mount an S3 bucket locally",
 		HideHelp: true,

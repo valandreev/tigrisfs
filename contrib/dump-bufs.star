@@ -1,4 +1,4 @@
-# Delve (https://github.com/go-delve/delve) script to dump all GeeseFS file buffer states
+# Delve (https://github.com/go-delve/delve) script to dump all TigrisFS file buffer states
 def main():
     # Like inodes = eval(None, "fs.inodes").Variable in the Flusher goroutine
     inodes = None

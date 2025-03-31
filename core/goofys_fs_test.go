@@ -32,7 +32,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
 func (s *GoofysTest) mount(t *C, mountPoint string) {

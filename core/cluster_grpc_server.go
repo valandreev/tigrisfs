@@ -4,11 +4,11 @@ package core
 
 import (
 	"context"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	"net"
 
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/core/pb"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"

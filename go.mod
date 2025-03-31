@@ -1,4 +1,4 @@
-module github.com/yandex-cloud/geesefs
+module github.com/tigrisdata/tigrisfs
 
 go 1.23
 

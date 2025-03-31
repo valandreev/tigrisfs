@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

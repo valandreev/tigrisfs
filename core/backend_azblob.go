@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -34,7 +34,7 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/google/uuid"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
 const AzuriteEndpoint = "http://127.0.0.1:8080/devstoreaccount1/"

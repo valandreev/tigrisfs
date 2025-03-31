@@ -20,8 +20,8 @@ package cfg
 import (
 	"os"
 
-	"github.com/yandex-cloud/geesefs/lib"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/lib"
+	"github.com/tigrisdata/tigrisfs/log"
 )
 
 func InitLoggers(flags *FlagStorage) {

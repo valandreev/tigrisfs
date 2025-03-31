@@ -32,8 +32,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 )
 
 // goofys is a Filey System written in Go. All the backend data is

@@ -1,10 +1,10 @@
 FROM debian:bullseye
 
-# Install GeeseFS
+# Install TigrisFS
 RUN echo "APT::Install-Recommends false;" >> /etc/apt/apt.conf
 RUN apt-get update && apt-get -y install fuse && apt-get clean && rm -rf /var/lib/apt/lists/*
-ADD https://github.com/yandex-cloud/geesefs/releases/latest/download/geesefs-linux-amd64 /usr/bin/geesefs
-RUN chmod 755 /usr/bin/geesefs
+ADD https://github.com/yandex-cloud/tigrisfs/releases/latest/download/tigrisfs-linux-amd64 /usr/bin/tigrisfs
+RUN chmod 755 /usr/bin/tigrisfs
 
 # Install openssh & vsftpd
 RUN apt-get update && \

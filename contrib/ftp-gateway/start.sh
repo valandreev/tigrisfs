@@ -2,13 +2,13 @@
 
 set -e
 
-# Start GeeseFS
+# Start TigrisFS
 [ -e /secrets/credentials ] && chmod 600 /secrets/credentials && chown root /secrets/credentials
 
 mkdir -p /home/s3
 useradd -d /home/s3 -s /bin/bash -p '*' $FTP_USER
 
-/usr/bin/geesefs --shared-config /secrets/credentials --endpoint $S3_ENDPOINT \
+/usr/bin/tigrisfs --shared-config /secrets/credentials --endpoint $S3_ENDPOINT \
     --uid $(id -u $FTP_USER) --gid $(id -g $FTP_USER) \
     -o allow_other --log-file stderr --dir-mode 0770 --file-mode 0660 $S3_BUCKET /home/s3
 

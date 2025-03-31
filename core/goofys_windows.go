@@ -24,9 +24,10 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
+	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 	"github.com/winfsp/cgofuse/fuse"
-	"github.com/yandex-cloud/geesefs/core/cfg"
 )
 
 // winfsp/cgofuse interface to the file system
@@ -1034,7 +1035,7 @@ func MountWin(
 	fs, err = NewGoofys(ctx, bucketName, flags)
 	if fs == nil {
 		if err == nil {
-			err = fmt.Errorf("GeeseFS initialization failed")
+			err = fmt.Errorf("TigrisFS initialization failed")
 		}
 		return
 	}

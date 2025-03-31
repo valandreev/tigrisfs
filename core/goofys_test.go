@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Integration tests for internal GeeseFS interfaces (not dependent on any FUSE binding)
+// Integration tests for internal TigrisFS interfaces (not dependent on any FUSE binding)
 
 /*
 
@@ -27,7 +27,7 @@ USAGE:
 [ EMULATOR=1 ] \
 [ EVENTUAL_CONSISTENCY=1 ] \
 CLOUD=s3|gcs|azblob|adlv1|adlv2 \
-    go test -v github.com/yandex-cloud/geesefs/core \
+    go test -v github.com/tigrisdata/tigrisfs/core \
     [ -check.f TestName ]
 
 NOTES:
@@ -60,7 +60,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 	. "gopkg.in/check.v1"
 )
 
@@ -738,7 +738,7 @@ func (s *GoofysTest) TestMultipartWriteAndTruncate(t *C) {
 	// Truncate the file so now it only consists of 1 part
 	err := fh.inode.SetAttributes(PUInt64(1*1024*1024), nil, nil, nil, nil)
 	t.Assert(err, IsNil)
-	// And now try to flush the file. It would fail if GeeseFS wasn't flushing it before truncation
+	// And now try to flush the file. It would fail if TigrisFS wasn't flushing it before truncation
 	err = fh.inode.SyncFile()
 	t.Assert(err, IsNil)
 	fh.Release()

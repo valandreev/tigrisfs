@@ -45,7 +45,7 @@ func logStderr(msg string, args ...any) {
 
 func InitLoggerRedirect(logFileName string) {
 	if logFileName == "syslog" {
-		lf, err := syslog.New(syslog.LOG_INFO, "geesefs")
+		lf, err := syslog.New(syslog.LOG_INFO, "tigrisfs")
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to connect to syslog")
 		}

@@ -23,7 +23,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/rs/zerolog"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	"io"
 	"net"
 	"os"
@@ -43,7 +43,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 	. "gopkg.in/check.v1"
 )
 

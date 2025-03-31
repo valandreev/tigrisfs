@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 	. "gopkg.in/check.v1"
 )
 

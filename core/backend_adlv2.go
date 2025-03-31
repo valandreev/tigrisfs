@@ -18,8 +18,8 @@ package core
 
 import (
 	"github.com/rs/zerolog"
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 
 	"context"
 	"encoding/base64"

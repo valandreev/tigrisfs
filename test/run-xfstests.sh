@@ -6,12 +6,12 @@ if [ "$NO_PROXY" == "" ]; then
   . `dirname $0`/run-proxy.sh
 fi
 
-mkdir -p /tmp/geesefs
-mkdir -p /tmp/geesefs2
+mkdir -p /tmp/tigrisfs
+mkdir -p /tmp/tigrisfs2
 
 sleep 5
 
-[ -e /usr/bin/geesefs ] || sudo ln -s `pwd`/geesefs /usr/bin/geesefs
+[ -e /usr/bin/tigrisfs ] || sudo ln -s `pwd`/tigrisfs /usr/bin/tigrisfs
 
 sudo apt-get update
 sudo apt-get -y install s3cmd
@@ -19,7 +19,7 @@ sudo apt-get -y install s3cmd
 s3cmd --signature-v2 --no-ssl --host-bucket= --access_key=foo --secret_key=bar --host=http://localhost:$PROXY_PORT mb s3://testbucket
 s3cmd --signature-v2 --no-ssl --host-bucket= --access_key=foo --secret_key=bar --host=http://localhost:$PROXY_PORT mb s3://testbucket2
 
-sed 's/\/home\/geesefs\/xfstests/$(pwd)/' <test/xfstests.config >xfstests/local.config
+sed 's/\/home\/tigrisfs\/xfstests/$(pwd)/' <test/xfstests.config >xfstests/local.config
 
 cp test/sync_unmount.py xfstests/
 

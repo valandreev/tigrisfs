@@ -17,7 +17,7 @@ package core
 
 import (
 	"github.com/shirou/gopsutil/mem"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	"runtime"
 	"runtime/debug"
 	"sync"

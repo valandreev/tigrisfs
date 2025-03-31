@@ -10,17 +10,17 @@ builds:
     goarch:
       - amd64
       - arm64
-    binary: geesefs
+    binary: tigrisfs
     ldflags:
       - -w -extldflags '-static'
-      - -X 'github.com/yandex-cloud/geesefs/main.Version={{.Version}}'
-      - -X 'github.com/yandex-cloud/geesefs/main.Endpoint={{.Env.ENDPOINT}}'
+      - -X 'github.com/yandex-cloud/tigrisfs/main.Version={{.Version}}'
+      - -X 'github.com/yandex-cloud/tigrisfs/main.Endpoint={{.Env.ENDPOINT}}'
 
 archives:
   - format_overrides:
       - goos: windows
         formats: [ 'zip' ]
-    name_template: "geesefs_tigris_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "tigrisfs_tigris_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: 'checksums.txt'
@@ -33,14 +33,14 @@ nfpms:
       - apk
       - deb
       - rpm
-    file_name_template: "geesefs_tigris_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    file_name_template: "tigrisfs_tigris_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     contents:
-      - src: pkg/geesefs@.service
-        dst: /lib/systemd/system/geesefs@.service
-      - src: pkg/geesefs_user@.service
-        dst: /lib/systemd/user/geesefs@.service
+      - src: pkg/tigrisfs@.service
+        dst: /lib/systemd/system/tigrisfs@.service
+      - src: pkg/tigrisfs_user@.service
+        dst: /lib/systemd/user/tigrisfs@.service
       - src: pkg/defaults
-        dst: /etc/default/geesefs
+        dst: /etc/default/tigrisfs
     scripts:
       postinstall: pkg/postinst
 

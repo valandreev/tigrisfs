@@ -36,10 +36,10 @@ _cleanup() {
 TMP=$(mktemp)
 
 _test() {
-  curl "https://storage.yandexcloud.net/udav318-geesefs-test-provision/video_cut.mp4" \
+  curl "https://storage.yandexcloud.net/udav318-tigrisfs-test-provision/video_cut.mp4" \
   -L --output "$VALID_DIR/video_cut.mp4"
 
-  curl "https://storage.yandexcloud.net/udav318-geesefs-test-provision/video_cut.mp4" \
+  curl "https://storage.yandexcloud.net/udav318-tigrisfs-test-provision/video_cut.mp4" \
   -L --output "$MNT1/video_cut.mp4"
 
   ffmpeg -i "$VALID_DIR/video_cut.mp4" -f mov "$VALID_DIR/video_cut.mov" 2> "$TEST_ARTIFACTS/test_read_write_ffmpeg/ffmpeg_log_valid" &

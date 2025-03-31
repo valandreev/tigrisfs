@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
 type SlurpGap struct {
@@ -496,11 +496,11 @@ func prefixLarger(s1, s2 string, pos int) bool {
 // returned as "2019/". So the list api for these backends returns "2019/" after
 // "2019-0001/" because ascii("/") > ascii("-"). This is problematic for us if
 // "2019/" is returned in x+1'th batch and "2019-0001/" is returned in x'th
-// because GeeseFS returns results to the client in the sorted order.
+// because TigrisFS returns results to the client in the sorted order.
 //
 // To overcome this issue, previously we continued to next listing pages
 // until the last item of the listing didn't contain characters less than '/'
-// anymore. But it was bad because '.' also precedes '/' and this made GeeseFS
+// anymore. But it was bad because '.' also precedes '/' and this made TigrisFS
 // fully load almost all directories, because most directories contain files
 // with extensions.
 //

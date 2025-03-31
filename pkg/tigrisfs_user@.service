@@ -1,0 +1,17 @@
+[Unit]
+Description=Mount Tigris bucket %i
+After=network-online.target
+
+[Service]
+EnvironmentFile=-/etc/default/tigrisfs
+EnvironmentFile=-/etc/default/tigrisfs-%i
+Environment=MOUNT_PREFIX=%h
+Type=oneshot
+ExecStartPre=/bin/mkdir -p ${MOUNT_PREFIX}/mnt/tigrisfs/%i
+ExecStart=/usr/bin/mount -t fuse.tigrisfs %i ${MOUNT_PREFIX}/mnt/tigrisfs/%i
+ExecStop=/usr/bin/umount ${MOUNT_PREFIX}/mnt/tigrisfs/%i
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+

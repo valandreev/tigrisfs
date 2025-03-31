@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/yandex-cloud/geesefs/core/pb"
+	"github.com/tigrisdata/tigrisfs/core/pb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

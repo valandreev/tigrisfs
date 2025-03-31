@@ -22,7 +22,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -41,7 +41,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -272,7 +272,7 @@ func (s *S3Backend) newS3() {
 	s.S3.Handlers.Build.RemoveByName("core.SDKVersionUserAgentHandler")
 	s.S3.Handlers.Build.PushBackNamed(request.NamedHandler{
 		Name: "core.SDKVersionUserAgentHandler",
-		Fn: request.MakeAddToUserAgentHandler("GeeseFS", cfg.Version,
+		Fn: request.MakeAddToUserAgentHandler("TigrisFS", cfg.Version,
 			runtime.Version(), runtime.GOOS, runtime.GOARCH),
 	})
 }

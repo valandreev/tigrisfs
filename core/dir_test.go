@@ -3,7 +3,7 @@ package core
 import (
 	. "gopkg.in/check.v1"
 
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
 type DirTest struct{}

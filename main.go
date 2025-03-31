@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"github.com/urfave/cli"
-	"github.com/yandex-cloud/geesefs/core"
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/core"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 
 	_ "net/http/pprof"
 )
@@ -114,7 +114,7 @@ func main() {
 			}
 		}
 
-		mainLog.Info().Str("version", cfg.Version).Msg("Starting GeeseFS version")
+		mainLog.Info().Str("version", cfg.Version).Msg("Starting TigrisFS version")
 		mainLog.Info().Str("bucketName", bucketName).Str("mountPoint", flags.MountPoint).Msg("Mounting")
 		mainLog.Info().Uint32("uid", flags.Uid).Uint32("defaultGid", flags.Gid).Msg("Default uid=gid")
 

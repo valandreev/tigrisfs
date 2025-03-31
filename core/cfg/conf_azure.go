@@ -17,7 +17,7 @@ package cfg
 import (
 	"context"
 	"fmt"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	"net/http"
 	"net/url"
 	"os"

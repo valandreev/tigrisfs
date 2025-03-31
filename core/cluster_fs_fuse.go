@@ -5,7 +5,7 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	iofs "io/fs"
 	"sync/atomic"
 	"syscall"
@@ -14,8 +14,8 @@ import (
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
 	"github.com/rs/zerolog"
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/core/pb"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -906,7 +906,7 @@ func MountCluster(
 
 	mountConfig := &fuse.MountConfig{
 		FSName:                  bucketName,
-		Subtype:                 "geesefs",
+		Subtype:                 "tigrisfs",
 		Options:                 convertFuseOptions(flags),
 		ErrorLogger:             log.GetStdLogger(fuseLog.Logger),
 		DisableWritebackCaching: true,

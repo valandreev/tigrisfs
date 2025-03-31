@@ -20,7 +20,7 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/yandex-cloud/geesefs/log"
+	"github.com/tigrisdata/tigrisfs/log"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -30,7 +30,7 @@ import (
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/jacobsa/fuse/fuseutil"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
 // jacobsa/fuse interface to the file system
@@ -930,7 +930,7 @@ func mountFuseFS(fs *Goofys) (mfs MountedFS, err error) {
 	// Mount the file system.
 	mountCfg := &fuse.MountConfig{
 		FSName:                  fs.bucket,
-		Subtype:                 "geesefs",
+		Subtype:                 "tigrisfs",
 		Options:                 convertFuseOptions(fs.flags),
 		ErrorLogger:             log.GetStdLogger(fuseLog.Logger),
 		DisableWritebackCaching: true,

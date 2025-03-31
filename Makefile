@@ -1,7 +1,7 @@
 VERSION=$(shell git describe --tags --always)
 ENDPOINT ?= "https://fly.storage.tigris.dev"
 
-BUILD_PARAM=-ldflags "-X github.com/yandex-cloud/geesefs/core/cfg.Version=$(VERSION) -X github.com/yandex-cloud/geesefs/core/cfg.DefaultEndpoint=$(ENDPOINT)"
+BUILD_PARAM=-ldflags "-X github.com/yandex-cloud/tigrisfs/core/cfg.Version=$(VERSION) -X github.com/yandex-cloud/tigrisfs/core/cfg.DefaultEndpoint=$(ENDPOINT)"
 
 run-test: s3proxy.jar build-debug
 	./test/run-tests.sh
@@ -42,6 +42,6 @@ protoc:
 	protoc --go_out=. --experimental_allow_proto3_optional --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative core/pb/*.proto
 
 clean:
-	rm -f geesefs
+	rm -f tigrisfs
 	rm -f core/mount_GoofysTest.*log
-	findmnt -t fuse.geesefs -n -o TARGET|xargs -r umount
+	findmnt -t fuse.tigrisfs -n -o TARGET|xargs -r umount

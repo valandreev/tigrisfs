@@ -1,7 +1,7 @@
 #!/bin/bash
 
 p=`dirname $0`
-FS_BIN="${FS_BIN:-"$p/../../geesefs"}"
+FS_BIN="${FS_BIN:-"$p/../../tigrisfs"}"
 
 _mount() {
   local MNT_DIR=$1
@@ -21,7 +21,7 @@ _umount() {
   echo "=== Unmount $MNT_DIR"
   umount "$MNT_DIR"
   sleep 1
-  until [[ $(ps -ef | grep "geesefs" | grep "$MNT_DIR" | wc -l) == 0 ]]; do
+  until [[ $(ps -ef | grep "tigrisfs" | grep "$MNT_DIR" | wc -l) == 0 ]]; do
     echo "=== Unmount $MNT_DIR... still doing"
     sleep 1
   done

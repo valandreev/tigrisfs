@@ -19,8 +19,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/yandex-cloud/geesefs/core/cfg"
-	"github.com/yandex-cloud/geesefs/core"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core"
 )
 
 var signalsToHandle = []os.Signal{ os.Interrupt, syscall.SIGTERM }

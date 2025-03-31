@@ -32,7 +32,7 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/yandex-cloud/geesefs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
 const (
@@ -788,7 +788,7 @@ func (inode *Inode) RemoveXattr(name string) error {
 
 func (inode *Inode) GetXattr(name string) ([]byte, error) {
 	inode.logFuse("GetXattr", name)
-	if name == "geesefs" {
+	if name == "tigrisfs" {
 		return []byte(cfg.Version), nil
 	}
 

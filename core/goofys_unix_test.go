@@ -31,8 +31,8 @@ import (
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/pkg/xattr"
-	bench_embed "github.com/yandex-cloud/geesefs/bench"
-	test_embed "github.com/yandex-cloud/geesefs/test"
+	bench_embed "github.com/tigrisdata/tigrisfs/bench"
+	test_embed "github.com/tigrisdata/tigrisfs/test"
 	"golang.org/x/sys/unix"
 	. "gopkg.in/check.v1"
 )
@@ -50,9 +50,9 @@ func (s *GoofysTest) mountCommon(t *C, mountPoint string, sameProc bool) {
 		if os.Getenv("REGION") != "" {
 			region = " --region \"" + os.Getenv("REGION") + "\""
 		}
-		exe := os.Getenv("GEESEFS_BINARY")
+		exe := os.Getenv("TIGRISFS_BINARY")
 		if exe == "" {
-			exe = "../geesefs"
+			exe = "../tigrisfs"
 		}
 		c := exec.Command("/bin/bash", "-c",
 			exe+" --debug_fuse --debug_s3 --log-format=console --no-log-color"+
