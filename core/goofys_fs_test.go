@@ -71,7 +71,7 @@ func (s *GoofysTest) TestIssue69Fuse(t *C) {
 
 	// don't really care about error code, but it should be a PathError
 	_, err = os.Stat("dir1")
-	t.Assert(err, IsNil)
+	t.Assert(err, NotNil)
 	_, err = os.Stat("dir1")
 	t.Assert(err, NotNil)
 }
