@@ -17,13 +17,14 @@
 package core
 
 import (
-	"github.com/shirou/gopsutil/mem"
-	"github.com/tigrisdata/tigrisfs/log"
 	"runtime"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/shirou/gopsutil/mem"
+	"github.com/tigrisdata/tigrisfs/log"
 )
 
 var bufferLog = log.GetLogger("buffer")
@@ -32,12 +33,12 @@ var bufferLog = log.GetLogger("buffer")
 type BufferPool struct {
 	mu sync.Mutex
 
-	curDirtyID uint64
+	//curDirtyID uint64
 
-	cur         int64
-	max         int64
-	limit       int64
-	cgroupLimit uint64
+	cur   int64
+	max   int64
+	limit int64
+	//cgroupLimit uint64
 
 	requested  uint64
 	gcPrev     uint64
@@ -47,7 +48,6 @@ type BufferPool struct {
 }
 
 func NewBufferPool(limit int64, gcInterval uint64) *BufferPool {
-
 	maxMem, _ := getCgroupAvailableMem()
 	m, err := mem.VirtualMemory()
 	if err != nil {

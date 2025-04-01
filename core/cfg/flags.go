@@ -48,8 +48,10 @@ func filterCategory(flags []cli.Flag, category string) (ret []cli.Flag) {
 	return
 }
 
-var VersionHash string
-var FuseOptions string
+var (
+	VersionHash string
+	FuseOptions string
+)
 
 func NewApp() (app *cli.App) {
 	cli.AppHelpTemplate = `NAME:
@@ -105,19 +107,19 @@ MISC OPTIONS:
 
 		cli.IntFlag{
 			Name:  "dir-mode",
-			Value: 0755,
+			Value: 0o755,
 			Usage: "Permission bits for directories. (default: 0755)",
 		},
 
 		cli.IntFlag{
 			Name:  "file-mode",
-			Value: 0644,
+			Value: 0o644,
 			Usage: "Permission bits for files. (default: 0644)",
 		},
 
 		cli.IntFlag{
 			Name:  "cache-file-mode",
-			Value: 0644,
+			Value: 0o644,
 			Usage: "Permission bits for disk cache files. (default: 0644)",
 		},
 
@@ -775,7 +777,7 @@ MISC OPTIONS:
 		}, fsFlags...), s3Flags...), tuningFlags...), debugFlags...), clusterFlags...),
 	}
 
-	var funcMap = template.FuncMap{
+	funcMap := template.FuncMap{
 		"category": filterCategory,
 		"join":     strings.Join,
 	}
@@ -802,7 +804,7 @@ MISC OPTIONS:
 
 	cli.HelpPrinter = func(w io.Writer, templ string, data interface{}) {
 		w = tabwriter.NewWriter(w, 1, 8, 2, ' ', 0)
-		var tmplGet = template.Must(template.New("help").Funcs(funcMap).Parse(templ))
+		tmplGet := template.Must(template.New("help").Funcs(funcMap).Parse(templ))
 		cfgLog.E(tmplGet.Execute(w, app))
 	}
 
@@ -1093,9 +1095,9 @@ func MessageMountFlags(args []string) (ret []string) {
 func DefaultFlags() *FlagStorage {
 	uid, gid := MyUserAndGroup()
 	return &FlagStorage{
-		DirMode:             0755,
-		FileMode:            0644,
-		CacheFileMode:       0644,
+		DirMode:             0o755,
+		FileMode:            0o644,
+		CacheFileMode:       0o644,
 		Uid:                 uint32(uid),
 		Gid:                 uint32(gid),
 		Setuid:              uid,

@@ -39,9 +39,11 @@ type FileHandle struct {
 }
 
 // On Linux and MacOS, IOV_MAX = 1024
-const IOV_MAX = 1024
-const READ_BUF_SIZE = 128 * 1024
-const MAX_FLUSH_PRIORITY = 3
+const (
+	IOV_MAX            = 1024
+	READ_BUF_SIZE      = 128 * 1024
+	MAX_FLUSH_PRIORITY = 3
+)
 
 // NewFileHandle returns a new file handle for the given `inode`
 func NewFileHandle(inode *Inode) *FileHandle {
@@ -206,7 +208,7 @@ func (inode *Inode) OpenCacheFD() error {
 	if inode.DiskCacheFD == nil {
 		cacheFileName := fs.flags.CachePath + "/" + inode.FullName()
 		var err error
-		err = os.MkdirAll(path.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0777)>>2))
+		err = os.MkdirAll(path.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0o777)>>2))
 		fuseLog.Errorf("Couldn't mkdir %v: %v", cacheFileName, err)
 		inode.DiskCacheFD, err = os.OpenFile(cacheFileName, os.O_RDWR|os.O_CREATE, fs.flags.CacheFileMode)
 		if err != nil {
@@ -270,7 +272,6 @@ func (inode *Inode) loadFromDisk(diskRanges []Range) (allocated int64, err error
 // Must be called with inode.mu taken
 // Loaded range should be guarded against eviction by adding it into inode.readRanges
 func (inode *Inode) LoadRange(offset, size uint64, readAheadSize uint64, ignoreMemoryLimit bool) (miss bool, err error) {
-
 	if offset >= inode.Attributes.Size {
 		return
 	}
@@ -650,7 +651,7 @@ func (inode *Inode) TryFlush(priority int) bool {
 	if inode.Parent != parent {
 		return false
 	}
-	if inode.flushError != nil && time.Now().Sub(inode.flushErrorTime) < inode.fs.flags.RetryInterval {
+	if inode.flushError != nil && time.Since(inode.flushErrorTime) < inode.fs.flags.RetryInterval {
 		inode.fs.ScheduleRetryFlush()
 		return false
 	}
@@ -1453,7 +1454,6 @@ func (inode *Inode) abortMultipart() {
 }
 
 func (inode *Inode) flushSmallObject() {
-
 	inode.mu.Lock()
 
 	if inode.CacheState != ST_CREATED && inode.CacheState != ST_MODIFIED {
@@ -1632,7 +1632,6 @@ func (inode *Inode) copyUnmodifiedParts(numParts uint64) (err error) {
 
 // LOCKS_REQUIRED(inode.mu)
 func (inode *Inode) flushPart(part uint64) {
-
 	partOffset, partSize := inode.fs.partRange(part)
 	partFullSize := partSize
 
@@ -1855,8 +1854,8 @@ func (inode *Inode) SyncFile() (err error) {
 }
 
 func (inode *Inode) SetAttributes(size *uint64, mode *os.FileMode,
-	mtime *time.Time, uid *uint32, gid *uint32) (err error) {
-
+	mtime *time.Time, uid *uint32, gid *uint32,
+) (err error) {
 	if inode.Parent == nil {
 		// chmod/chown on the root directory of mountpoint is not supported
 		return syscall.ENOTSUP

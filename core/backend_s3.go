@@ -23,9 +23,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/tigrisdata/tigrisfs/log"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,6 +41,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -98,10 +97,10 @@ func NewS3(bucket string, flags *cfg.FlagStorage, config *cfg.S3Config) (*S3Back
 	}
 
 	if config.UseKMS {
-		//SSE header string for KMS server-side encryption (SSE-KMS)
+		// SSE header string for KMS server-side encryption (SSE-KMS)
 		s.sseType = s3.ServerSideEncryptionAwsKms
 	} else if config.UseSSE {
-		//SSE header string for non-KMS server-side encryption (SSE-S3)
+		// SSE header string for non-KMS server-side encryption (SSE-S3)
 		s.sseType = s3.ServerSideEncryptionAes256
 	}
 
@@ -139,7 +138,8 @@ func (s *S3Backend) TryIAM() (err error) {
 	var ttl time.Duration
 	var resp *http.Response
 	if s.config.IAMFlavor == "gcp" {
-		req, err := http.NewRequest("GET", credUrl, nil)
+		var req *http.Request
+		req, err = http.NewRequest("GET", credUrl, nil)
 		if err != nil {
 			s3Log.Warn().Str("credUrl", credUrl).Err(err).Msg("Failed to get IAM token")
 			return err
@@ -159,7 +159,7 @@ func (s *S3Backend) TryIAM() (err error) {
 	var body []byte
 	if resp.Body != nil {
 		defer resp.Body.Close()
-		body, err = ioutil.ReadAll(resp.Body)
+		body, err = io.ReadAll(resp.Body)
 	}
 	if err != nil {
 		s3Log.Warn().Str("credUrl", credUrl).Err(err).Msg("Failed to get IAM token")
@@ -408,11 +408,11 @@ func (s *S3Backend) Init(key string) error {
 	}
 
 	if !s.config.RegionSet {
-		err, _ = s.detectBucketLocationByHEAD()
-		if err == nil {
-			// we detected a region header, this is probably AWS S3,
-			// or we can use anonymous access, or both
-		}
+		_, _ = s.detectBucketLocationByHEAD()
+		// if err == nil {
+		// we detected a region header, this is probably AWS S3,
+		// or we can use anonymous access, or both
+
 		// if region still not set let SDK config and service decide whether it needed
 		s.newS3()
 	}
@@ -524,6 +524,7 @@ func (b *xsdBase64Binary) UnmarshalText(text []byte) (err error) {
 	*b, err = base64.StdEncoding.DecodeString(string(text))
 	return
 }
+
 func (b xsdBase64Binary) MarshalText() ([]byte, error) {
 	var buf bytes.Buffer
 	enc := base64.NewEncoder(base64.StdEncoding, &buf)
@@ -644,8 +645,9 @@ func (s *S3Backend) getRequestId(r *request.Request) string {
 }
 
 func (s *S3Backend) HeadBlob(param *HeadBlobInput) (*HeadBlobOutput, error) {
-	head := s3.HeadObjectInput{Bucket: &s.bucket,
-		Key: &param.Key,
+	head := s3.HeadObjectInput{
+		Bucket: &s.bucket,
+		Key:    &param.Key,
 	}
 	if s.config.SseC != "" {
 		head.SSECustomerAlgorithm = PString("AES256")
@@ -785,9 +787,9 @@ func (s *S3Backend) DeleteBlobs(param *DeleteBlobsInput) (*DeleteBlobsOutput, er
 	num_objs := len(param.Items)
 
 	var items s3.Delete
-	var objs = make([]*s3.ObjectIdentifier, num_objs)
+	objs := make([]*s3.ObjectIdentifier, num_objs)
 
-	for i, _ := range param.Items {
+	for i := range param.Items {
 		objs[i] = &s3.ObjectIdentifier{Key: &param.Items[i]}
 	}
 
@@ -900,8 +902,8 @@ func (s *S3Backend) defaultCopyPartSizes(size int64) []cfg.PartSizeConfig {
 }
 
 func (s *S3Backend) copyObjectMultipart(size int64, from string, to string, mpuId string,
-	srcEtag *string, metadata map[string]*string, storageClass *string) (requestId string, err error) {
-
+	srcEtag *string, metadata map[string]*string, storageClass *string,
+) (requestId string, err error) {
 	const MAX_S3_MPU_SIZE = 5 * 1024 * 1024 * 1024 * 1024
 	if size > MAX_S3_MPU_SIZE {
 		panic(fmt.Sprintf("object size: %v exceeds maximum S3 MPU size: %v", size, MAX_S3_MPU_SIZE))

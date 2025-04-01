@@ -35,8 +35,10 @@ var DefaultLogConfig = &LogConfig{
 	Level: "info",
 }
 
-var mu sync.Mutex
-var loggers = make(map[string]*LogHandle)
+var (
+	mu      sync.Mutex
+	loggers = make(map[string]*LogHandle)
+)
 
 var logWriter io.Writer = os.Stderr
 
@@ -53,7 +55,7 @@ func InitLoggerRedirect(logFileName string) {
 		logWriter = lf
 	} else if logFileName != "stderr" && logFileName != "/dev/stderr" && logFileName != "" {
 		var err error
-		lf, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		lf, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 		if err != nil {
 			logStderr("Couldn't open file %v for writing logs", logFileName)
 			return
@@ -158,22 +160,6 @@ type LogConfig struct {
 	Format     string
 	Color      bool
 	SampleRate float64 `json:"sample_rate" mapstructure:"sample_rate" yaml:"sample_rate"`
-}
-
-// trim full path. output in the form directory/file.go.
-func consoleFormatCaller(i any) string {
-	var c string
-	if cc, ok := i.(string); ok {
-		c = cc
-	}
-	if len(c) > 0 {
-		l := strings.Split(c, "/")
-		if len(l) == 1 {
-			return l[0]
-		}
-		return l[len(l)-2] + "/" + l[len(l)-1]
-	}
-	return c
 }
 
 func consoleFormatCallerWithModule(i any, module string) string {

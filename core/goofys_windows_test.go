@@ -22,10 +22,11 @@ package core
 
 import (
 	"errors"
-	. "gopkg.in/check.v1"
 	"os"
 	"syscall"
 	"time"
+
+	. "gopkg.in/check.v1"
 )
 
 func (s *GoofysTest) SetUpSuite(t *C) {

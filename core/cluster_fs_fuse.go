@@ -19,10 +19,11 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/tigrisdata/tigrisfs/log"
 	iofs "io/fs"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/tigrisdata/tigrisfs/log"
 
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
@@ -913,7 +914,6 @@ func MountCluster(
 	bucketName string,
 	flags *cfg.FlagStorage,
 ) (*Goofys, MountedFS, error) {
-
 	if flags.DebugS3 {
 		log.SetCloudLogLevel(zerolog.DebugLevel)
 	}

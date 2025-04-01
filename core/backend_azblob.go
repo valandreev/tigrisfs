@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/tigrisdata/tigrisfs/log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -29,6 +28,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/tigrisdata/tigrisfs/log"
 
 	"github.com/rs/zerolog"
 
@@ -38,9 +39,11 @@ import (
 	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
-const AzuriteEndpoint = "http://127.0.0.1:8080/devstoreaccount1/"
-const AzureDirBlobMetadataKey = "hdi_isfolder"
-const AzureBlobMetaDataHeaderPrefix = "x-ms-meta-"
+const (
+	AzuriteEndpoint               = "http://127.0.0.1:8080/devstoreaccount1/"
+	AzureDirBlobMetadataKey       = "hdi_isfolder"
+	AzureBlobMetaDataHeaderPrefix = "x-ms-meta-"
+)
 
 // Azure Blob Store API does not not treat headers as case insensitive.
 // This is particularly a problem with `AzureDirBlobMetadataKey` header.
@@ -504,7 +507,7 @@ func (b *AZBlob) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 	if param.Delimiter != nil {
 		resp, err := c.ListBlobsHierarchySegment(context.TODO(),
 			azblob.Marker{
-				param.ContinuationToken,
+				Val: param.ContinuationToken,
 			},
 			NilStr(param.Delimiter),
 			options)
@@ -512,7 +515,7 @@ func (b *AZBlob) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 			return nil, mapAZBError(err)
 		}
 
-		for i, _ := range resp.Segment.BlobPrefixes {
+		for i := range resp.Segment.BlobPrefixes {
 			p := resp.Segment.BlobPrefixes[i]
 			prefixes = append(prefixes, BlobPrefixOutput{Prefix: &p.Name})
 		}
@@ -528,7 +531,7 @@ func (b *AZBlob) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 	} else {
 		resp, err := c.ListBlobsFlatSegment(context.TODO(),
 			azblob.Marker{
-				param.ContinuationToken,
+				Val: param.ContinuationToken,
 			},
 			options)
 		if err != nil {
@@ -555,7 +558,7 @@ func (b *AZBlob) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 	}
 	var sortItems bool
 
-	for idx, _ := range blobItems {
+	for idx := range blobItems {
 		i := &blobItems[idx]
 		p := &i.Properties
 

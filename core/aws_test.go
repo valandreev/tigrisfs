@@ -16,13 +16,13 @@
 package core
 
 import (
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	. "gopkg.in/check.v1"
-
 	"fmt"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	. "gopkg.in/check.v1"
 )
 
 type AwsTest struct {

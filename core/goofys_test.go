@@ -222,7 +222,8 @@ func (s *GoofysTest) TestReadDirWithExternalChanges(t *C) {
 
 	defaultEntries := []string{
 		"dir1", "dir2", "dir4", "empty_dir",
-		"empty_dir2", "file1", "file2", "zero"}
+		"empty_dir2", "file1", "file2", "zero",
+	}
 	s.assertHasEntries(t, s.getRoot(t), defaultEntries)
 	// dir1 has file3.
 	dir1, err = s.fs.LookupPath("dir1")
@@ -241,7 +242,8 @@ func (s *GoofysTest) TestReadDirWithExternalChanges(t *C) {
 	// newEntries = `defaultEntries` - dir1 - file1 + file3.
 	newEntries := []string{
 		"dir2", "dir4", "empty_dir", "empty_dir2",
-		"file2", "file3", "zero"}
+		"file2", "file3", "zero",
+	}
 	if s.cloud.Capabilities().DirBlob {
 		// dir1 is not automatically deleted
 		newEntries = append([]string{"dir1"}, newEntries...)
@@ -304,7 +306,6 @@ func (s *GoofysTest) TestReadFiles(t *C) {
 				t.Assert(string(buf), Equals, en.Name)
 			}
 		} else {
-
 		}
 	}
 }
@@ -1387,7 +1388,7 @@ func (s *GoofysTest) TestChmod(t *C) {
 	in, err := s.fs.LookupPath("file1")
 	t.Assert(err, IsNil)
 
-	targetMode := os.FileMode(0777)
+	targetMode := os.FileMode(0o777)
 
 	err = in.SetAttributes(nil, &targetMode, nil, nil, nil)
 	t.Assert(err, IsNil)
@@ -1929,7 +1930,8 @@ func (s *GoofysTest) TestReadDirSlurpHeuristic(t *C) {
 	t.Assert(root.seqOpenDirScore, Equals, uint8(0))
 	s.assertHasEntries(t, s.getRoot(t), []string{
 		"dir1", "dir2", "dir2isafile", "dir4", "empty_dir",
-		"empty_dir2", "file1", "file2", "zero"})
+		"empty_dir2", "file1", "file2", "zero",
+	})
 
 	dir1, err := s.fs.LookupPath("dir1")
 	t.Assert(err, IsNil)
@@ -2451,7 +2453,7 @@ func (s *GoofysTest) TestMountsList(t *C) {
 	rootCloud := root.fs.getCloud()
 
 	s.fs.MountAll([]*Mount{
-		&Mount{"dir4/cloud1", cloud, "", false},
+		{"dir4/cloud1", cloud, "", false},
 	})
 
 	in, err := s.fs.LookupPath("dir4")
@@ -2498,7 +2500,7 @@ func (s *GoofysTest) TestMountsNewDir(t *C) {
 	t.Assert(err, Equals, syscall.ENOENT)
 
 	s.fs.MountAll([]*Mount{
-		&Mount{"dir5/cloud1", s.cloud, "", false},
+		{"dir5/cloud1", s.cloud, "", false},
 	})
 
 	in, err := s.fs.LookupPath("dir5")
@@ -2523,7 +2525,7 @@ func (s *GoofysTest) TestMountsNewMounts(t *C) {
 	t.Assert(err, IsNil)
 
 	s.fs.MountAll([]*Mount{
-		&Mount{"dir4/cloud1", cloud, "", false},
+		{"dir4/cloud1", cloud, "", false},
 	})
 
 	s.readDirIntoCache(t, in.Id)
@@ -2537,8 +2539,8 @@ func (s *GoofysTest) TestMountsNewMounts(t *C) {
 	t.Assert(err, Equals, syscall.ENOENT)
 
 	s.fs.MountAll([]*Mount{
-		&Mount{"dir4/cloud1", cloud, "", false},
-		&Mount{"dir4/cloud2", cloud, "cloudprefix", false},
+		{"dir4/cloud1", cloud, "", false},
+		{"dir4/cloud2", cloud, "cloudprefix", false},
 	})
 
 	c2, err := s.fs.LookupPath("dir4/cloud2")
@@ -2584,11 +2586,11 @@ func (s *GoofysTest) TestMountsError(t *C) {
 	}
 
 	s.fs.MountAll([]*Mount{
-		&Mount{"dir4/newerror", StorageBackendInitError{
+		{"dir4/newerror", StorageBackendInitError{
 			fmt.Errorf("foo"),
 			Capabilities{},
 		}, "errprefix1", false},
-		&Mount{"dir4/initerror", &StorageBackendInitWrapper{
+		{"dir4/initerror", &StorageBackendInitWrapper{
 			StorageBackend: cloud,
 			initKey:        "foobar",
 		}, "errprefix2", false},
@@ -2622,7 +2624,7 @@ func (s *GoofysTest) TestMountsMultiLevel(t *C) {
 	cloud := s.newBackend(t, bucket, true)
 
 	s.fs.MountAll([]*Mount{
-		&Mount{"dir4/sub/dir", cloud, "", false},
+		{"dir4/sub/dir", cloud, "", false},
 	})
 
 	sub, err := s.fs.LookupPath("dir4/sub")
@@ -2635,8 +2637,8 @@ func (s *GoofysTest) TestMountsMultiLevel(t *C) {
 func (s *GoofysTest) TestMountsNested(t *C) {
 	t.Skip("Nested mounts not supported")
 	s.testMountsNested(t, s.cloud, []*Mount{
-		&Mount{"dir5/in/a/dir", s.cloud, "test_nested/1/dir/", false},
-		&Mount{"dir5/in/", s.cloud, "test_nested/2/", false},
+		{"dir5/in/a/dir", s.cloud, "test_nested/1/dir/", false},
+		{"dir5/in/", s.cloud, "test_nested/2/", false},
 	})
 }
 
@@ -2644,14 +2646,14 @@ func (s *GoofysTest) TestMountsNested(t *C) {
 func (s *GoofysTest) TestMountsNestedReversed(t *C) {
 	t.Skip("Nested mounts not supported")
 	s.testMountsNested(t, s.cloud, []*Mount{
-		&Mount{"dir5/in/", s.cloud, "test_nested/2/", false},
-		&Mount{"dir5/in/a/dir", s.cloud, "test_nested/1/dir/", false},
+		{"dir5/in/", s.cloud, "test_nested/2/", false},
+		{"dir5/in/a/dir", s.cloud, "test_nested/1/dir/", false},
 	})
 }
 
 func (s *GoofysTest) testMountsNested(t *C, cloud StorageBackend,
-	mounts []*Mount) {
-
+	mounts []*Mount,
+) {
 	s.clearPrefix(t, cloud, "dir5")
 	s.clearPrefix(t, cloud, "test_nested")
 
@@ -2748,7 +2750,6 @@ func checkSortedListsAreEqual(l1, l2 []string) error {
 			onlyl2 = append(onlyl2, fmt.Sprintf("%d:%v", i2, l2[i2]))
 			i2++
 		}
-
 	}
 	for ; i1 < len(l1); i1++ {
 		onlyl1 = append(onlyl1, fmt.Sprintf("%d:%v", i1, l1[i1]))

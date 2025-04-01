@@ -19,7 +19,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/rs/zerolog"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -33,6 +32,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/jacobsa/fuse/fuseops"
+	"github.com/rs/zerolog"
 	"github.com/tigrisdata/tigrisfs/core/cfg"
 	"github.com/tigrisdata/tigrisfs/log"
 )
@@ -144,9 +144,11 @@ type OpStats struct {
 	ts             time.Time
 }
 
-var s3Log = log.GetLogger("s3")
-var mainLog = log.GetLogger("main")
-var fuseLog = log.GetLogger("fuse")
+var (
+	s3Log   = log.GetLogger("s3")
+	mainLog = log.GetLogger("main")
+	fuseLog = log.GetLogger("fuse")
+)
 
 func NewBackend(bucket string, flags *cfg.FlagStorage) (cloud StorageBackend, err error) {
 	if flags.Backend == nil {
@@ -179,7 +181,7 @@ type BucketSpec struct {
 }
 
 func ParseBucketSpec(bucket string) (spec BucketSpec, err error) {
-	if strings.Index(bucket, "://") != -1 {
+	if strings.Contains(bucket, "://") {
 		var u *url.URL
 		u, err = url.Parse(bucket)
 		if err != nil {
@@ -269,17 +271,19 @@ func NewGoofys(ctx context.Context, bucketName string, flags *cfg.FlagStorage) (
 					return nil, err
 				}
 				flags.Backend = &config
-				if config.Container != "" {
-					bucketName = config.Container
-				} else {
-					bucketName = spec.Bucket
-				}
-				if config.Prefix != "" {
-					spec.Prefix = config.Prefix
-				}
-				if spec.Prefix != "" {
-					bucketName += ":" + spec.Prefix
-				}
+				/*
+					if config.Container != "" {
+						bucketName = config.Container
+					} else {
+						bucketName = spec.Bucket
+					}
+					if config.Prefix != "" {
+						spec.Prefix = config.Prefix
+					}
+					if spec.Prefix != "" {
+						bucketName += ":" + spec.Prefix
+					}
+				*/
 
 				flags.Backend = &cfg.ADLv2Config{
 					Endpoint:   config.Endpoint,
@@ -296,12 +300,13 @@ func NewGoofys(ctx context.Context, bucketName string, flags *cfg.FlagStorage) (
 }
 
 func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
-	newBackend func(string, *cfg.FlagStorage) (StorageBackend, error)) (*Goofys, error) {
+	newBackend func(string, *cfg.FlagStorage) (StorageBackend, error),
+) (*Goofys, error) {
 	// Set up the basic struct.
 	fs := &Goofys{
 		bucket:           bucket,
 		flags:            flags,
-		umask:            0122,
+		umask:            0o122,
 		shutdownCh:       make(chan struct{}),
 		zeroBuf:          make([]byte, 1048576),
 		inflightChanges:  make(map[string]int),
@@ -662,7 +667,7 @@ func (fs *Goofys) Flusher() {
 			} else {
 				if atomic.CompareAndSwapUint64(&fs.hasNewWrites, 1, 0) {
 					// restart from the beginning
-					inodeID, nextQueueID = 0, 0
+					//inodeID, nextQueueID = 0, 0
 					priority = 1
 					attempts = 1
 					curPriorityOk = atomic.LoadInt64(&fs.flushPriorities[1]) > 0
@@ -768,7 +773,7 @@ func (fs *Goofys) MetaEvictor() {
 		var scan []fuseops.InodeID
 		for tm, inodes := range fs.inodesByTime {
 			if tm < expireUnix {
-				for inode, _ := range inodes {
+				for inode := range inodes {
 					if !seen[inode] {
 						scan = append(scan, inode)
 					}
@@ -903,7 +908,6 @@ func (fs *Goofys) Unmount(mountPoint string) {
 	}
 	mp.addModified(-1)
 	mp.ResetForUnmount()
-	return
 }
 
 func (fs *Goofys) RefreshInodeCache(inode *Inode) error {
@@ -954,7 +958,7 @@ func (fs *Goofys) RefreshInodeCache(inode *Inode) error {
 		}
 		return mappedErr
 	}
-	inode, err := parent.recheckInode(inode, name)
+	_, err := parent.recheckInode(inode, name)
 	mappedErr = mapAwsError(err)
 	if mappedErr == syscall.ENOENT {
 		notifications = append(notifications, &fuseops.NotifyDelete{
@@ -1129,7 +1133,7 @@ func (fs *Goofys) addInflightListing() int {
 	fs.inflightListingId++
 	id := fs.inflightListingId
 	m := make(map[string]bool)
-	for k, _ := range fs.inflightChanges {
+	for k := range fs.inflightChanges {
 		m[k] = true
 	}
 	fs.inflightListings[id] = m
@@ -1173,7 +1177,6 @@ func (fs *Goofys) SyncTree(parent *Inode) {
 			_ = inode.SyncFile()
 		}
 	}
-	return
 }
 
 func (fs *Goofys) LookupParent(path string) (parent *Inode, child string, err error) {

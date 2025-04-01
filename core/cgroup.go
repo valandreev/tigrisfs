@@ -23,10 +23,12 @@ import (
 	"strings"
 )
 
-const CGROUP_PATH = "/proc/self/cgroup"
-const CGROUP_FOLDER_PREFIX = "/sys/fs/cgroup/memory"
-const MEM_LIMIT_FILE_SUFFIX = "/memory.limit_in_bytes"
-const MEM_USAGE_FILE_SUFFIX = "/memory.usage_in_bytes"
+const (
+	CGROUP_PATH           = "/proc/self/cgroup"
+	CGROUP_FOLDER_PREFIX  = "/sys/fs/cgroup/memory"
+	MEM_LIMIT_FILE_SUFFIX = "/memory.limit_in_bytes"
+	MEM_USAGE_FILE_SUFFIX = "/memory.usage_in_bytes"
+)
 
 func getCgroupAvailableMem() (retVal uint64, err error) {
 	// get the memory cgroup for self and send limit - usage for the cgroup
@@ -66,7 +68,6 @@ func getCgroupAvailableMem() (retVal uint64, err error) {
 }
 
 func getMemoryCgroupPath(data string) (string, error) {
-
 	/*
 	   Content of /proc/self/cgroup
 

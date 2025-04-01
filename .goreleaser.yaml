@@ -13,8 +13,8 @@ builds:
     binary: tigrisfs
     ldflags:
       - -w -extldflags '-static'
-      - -X 'github.com/yandex-cloud/tigrisfs/main.Version={{.Version}}'
-      - -X 'github.com/yandex-cloud/tigrisfs/main.Endpoint={{.Env.ENDPOINT}}'
+      - -X 'github.com/tigrisdata/tigrisfs/main.Version={{.Version}}'
+      - -X 'github.com/tigrisdata/tigrisfs/main.Endpoint={{.Env.ENDPOINT}}'
 
 archives:
   - format_overrides:

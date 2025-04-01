@@ -87,8 +87,10 @@ type S3Config struct {
 	BucketOwner string
 }
 
-var s3Session *session.Session
-var cfgLog = log.GetLogger("config")
+var (
+	s3Session *session.Session
+	cfgLog    = log.GetLogger("config")
+)
 
 func (c *S3Config) Init() *S3Config {
 	if c.Region == "" {

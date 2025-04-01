@@ -22,8 +22,7 @@ type BufferListTest struct{}
 
 var _ = Suite(&BufferListTest{})
 
-type TestBLHelpers struct {
-}
+type TestBLHelpers struct{}
 
 func (t *TestBLHelpers) PartNum(offset uint64) uint64 {
 	return offset / (5 * 1024)

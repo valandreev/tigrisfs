@@ -21,12 +21,13 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/tigrisdata/tigrisfs/log"
 	"os"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/tigrisdata/tigrisfs/log"
 
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
@@ -69,8 +70,8 @@ func NewGoofysFuse(fs *Goofys) *GoofysFuse {
 
 func (fs *GoofysFuse) StatFS(
 	ctx context.Context,
-	op *fuseops.StatFSOp) (err error) {
-
+	op *fuseops.StatFSOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
 	const BLOCK_SIZE = 4096
@@ -89,8 +90,8 @@ func (fs *GoofysFuse) StatFS(
 
 func (fs *GoofysFuse) GetInodeAttributes(
 	ctx context.Context,
-	op *fuseops.GetInodeAttributesOp) (err error) {
-
+	op *fuseops.GetInodeAttributesOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
 	inode := fs.getInodeOrDie(op.Inode)
@@ -109,7 +110,8 @@ func (fs *GoofysFuse) GetInodeAttributes(
 }
 
 func (fs *GoofysFuse) GetXattr(ctx context.Context,
-	op *fuseops.GetXattrOp) (err error) {
+	op *fuseops.GetXattrOp,
+) (err error) {
 	if fs.flags.DisableXattr {
 		return syscall.ENOSYS
 	}
@@ -142,7 +144,8 @@ func (fs *GoofysFuse) GetXattr(ctx context.Context,
 }
 
 func (fs *GoofysFuse) ListXattr(ctx context.Context,
-	op *fuseops.ListXattrOp) (err error) {
+	op *fuseops.ListXattrOp,
+) (err error) {
 	if fs.flags.DisableXattr {
 		return syscall.ENOSYS
 	}
@@ -182,7 +185,8 @@ func (fs *GoofysFuse) ListXattr(ctx context.Context,
 }
 
 func (fs *GoofysFuse) RemoveXattr(ctx context.Context,
-	op *fuseops.RemoveXattrOp) (err error) {
+	op *fuseops.RemoveXattrOp,
+) (err error) {
 	if fs.flags.DisableXattr {
 		return syscall.ENOSYS
 	}
@@ -201,7 +205,8 @@ func (fs *GoofysFuse) RemoveXattr(ctx context.Context,
 }
 
 func (fs *GoofysFuse) SetXattr(ctx context.Context,
-	op *fuseops.SetXattrOp) (err error) {
+	op *fuseops.SetXattrOp,
+) (err error) {
 	if fs.flags.DisableXattr {
 		return syscall.ENOSYS
 	}
@@ -225,7 +230,8 @@ func (fs *GoofysFuse) SetXattr(ctx context.Context,
 }
 
 func (fs *GoofysFuse) CreateSymlink(ctx context.Context,
-	op *fuseops.CreateSymlinkOp) (err error) {
+	op *fuseops.CreateSymlinkOp,
+) (err error) {
 	parent := fs.getInodeOrDie(op.Parent)
 
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
@@ -248,7 +254,8 @@ func (fs *GoofysFuse) CreateSymlink(ctx context.Context,
 }
 
 func (fs *GoofysFuse) ReadSymlink(ctx context.Context,
-	op *fuseops.ReadSymlinkOp) (err error) {
+	op *fuseops.ReadSymlinkOp,
+) (err error) {
 	inode := fs.getInodeOrDie(op.Inode)
 
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
@@ -265,8 +272,8 @@ func (fs *GoofysFuse) ReadSymlink(ctx context.Context,
 
 func (fs *GoofysFuse) LookUpInode(
 	ctx context.Context,
-	op *fuseops.LookUpInodeOp) (err error) {
-
+	op *fuseops.LookUpInodeOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
 	defer func() { fuseLog.Debugf("<-- LookUpInode %v %v %v", op.Parent, op.Name, err) }()
@@ -290,8 +297,8 @@ func (fs *GoofysFuse) LookUpInode(
 
 func (fs *GoofysFuse) ForgetInode(
 	ctx context.Context,
-	op *fuseops.ForgetInodeOp) (err error) {
-
+	op *fuseops.ForgetInodeOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
 	fs.mu.RLock()
@@ -310,8 +317,8 @@ func (fs *GoofysFuse) ForgetInode(
 
 func (fs *GoofysFuse) OpenDir(
 	ctx context.Context,
-	op *fuseops.OpenDirOp) (err error) {
-
+	op *fuseops.OpenDirOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.noops, 1)
 
 	in := fs.getInodeOrDie(op.Inode)
@@ -347,8 +354,8 @@ func makeDirEntry(inode *Inode, offset fuseops.DirOffset) fuseutil.Dirent {
 
 func (fs *GoofysFuse) ReadDir(
 	ctx context.Context,
-	op *fuseops.ReadDirOp) (err error) {
-
+	op *fuseops.ReadDirOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
 	// Find the handle.
@@ -418,8 +425,8 @@ func (fs *GoofysFuse) ReadDir(
 
 func (fs *GoofysFuse) ReleaseDirHandle(
 	ctx context.Context,
-	op *fuseops.ReleaseDirHandleOp) (err error) {
-
+	op *fuseops.ReleaseDirHandleOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.noops, 1)
 
 	fs.mu.RLock()
@@ -439,7 +446,8 @@ func (fs *GoofysFuse) ReleaseDirHandle(
 
 func (fs *GoofysFuse) OpenFile(
 	ctx context.Context,
-	op *fuseops.OpenFileOp) (err error) {
+	op *fuseops.OpenFileOp,
+) (err error) {
 	in := fs.getInodeOrDie(op.Inode)
 
 	atomic.AddInt64(&fs.stats.noops, 1)
@@ -471,8 +479,8 @@ func (fs *GoofysFuse) OpenFile(
 
 func (fs *GoofysFuse) ReadFile(
 	ctx context.Context,
-	op *fuseops.ReadFileOp) (err error) {
-
+	op *fuseops.ReadFileOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.reads, 1)
 
 	fs.mu.RLock()
@@ -487,8 +495,8 @@ func (fs *GoofysFuse) ReadFile(
 
 func (fs *GoofysFuse) SyncFile(
 	ctx context.Context,
-	op *fuseops.SyncFileOp) (err error) {
-
+	op *fuseops.SyncFileOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	if !fs.flags.IgnoreFsync {
@@ -510,8 +518,8 @@ func (fs *GoofysFuse) SyncFile(
 
 func (fs *GoofysFuse) SyncFS(
 	ctx context.Context,
-	op *fuseops.SyncFSOp) (err error) {
-
+	op *fuseops.SyncFSOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	if !fs.flags.IgnoreFsync {
@@ -523,8 +531,8 @@ func (fs *GoofysFuse) SyncFS(
 
 func (fs *GoofysFuse) FlushFile(
 	ctx context.Context,
-	op *fuseops.FlushFileOp) (err error) {
-
+	op *fuseops.FlushFileOp,
+) (err error) {
 	// FlushFile is a no-op because we flush changes to the server asynchronously
 	// If the user really wants to persist a file to the server he should call fsync()
 
@@ -535,8 +543,8 @@ func (fs *GoofysFuse) FlushFile(
 
 func (fs *GoofysFuse) ReleaseFileHandle(
 	ctx context.Context,
-	op *fuseops.ReleaseFileHandleOp) (err error) {
-
+	op *fuseops.ReleaseFileHandleOp,
+) (err error) {
 	fs.mu.Lock()
 	fh := fs.fileHandles[op.Handle]
 	fh.Release()
@@ -554,8 +562,8 @@ func (fs *GoofysFuse) ReleaseFileHandle(
 
 func (fs *GoofysFuse) CreateFile(
 	ctx context.Context,
-	op *fuseops.CreateFileOp) (err error) {
-
+	op *fuseops.CreateFileOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	parent := fs.getInodeOrDie(op.Parent)
@@ -590,8 +598,8 @@ func (fs *GoofysFuse) CreateFile(
 // and then separate fuse_open() for file creation instead of fuse_create_open()
 func (fs *GoofysFuse) MkNode(
 	ctx context.Context,
-	op *fuseops.MkNodeOp) (err error) {
-
+	op *fuseops.MkNodeOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	if (op.Mode&os.ModeType) != os.ModeDir &&
@@ -642,8 +650,8 @@ func (fs *GoofysFuse) MkNode(
 
 func (fs *GoofysFuse) MkDir(
 	ctx context.Context,
-	op *fuseops.MkDirOp) (err error) {
-
+	op *fuseops.MkDirOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	parent := fs.getInodeOrDie(op.Parent)
@@ -677,8 +685,8 @@ func (fs *GoofysFuse) MkDir(
 
 func (fs *GoofysFuse) RmDir(
 	ctx context.Context,
-	op *fuseops.RmDirOp) (err error) {
-
+	op *fuseops.RmDirOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	parent := fs.getInodeOrDie(op.Parent)
@@ -696,8 +704,8 @@ func (fs *GoofysFuse) RmDir(
 
 func (fs *GoofysFuse) SetInodeAttributes(
 	ctx context.Context,
-	op *fuseops.SetInodeAttributesOp) (err error) {
-
+	op *fuseops.SetInodeAttributesOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	inode := fs.getInodeOrDie(op.Inode)
@@ -722,8 +730,8 @@ func (fs *GoofysFuse) SetInodeAttributes(
 
 func (fs *GoofysFuse) WriteFile(
 	ctx context.Context,
-	op *fuseops.WriteFileOp) (err error) {
-
+	op *fuseops.WriteFileOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.writes, 1)
 
 	fs.mu.RLock()
@@ -746,8 +754,8 @@ func (fs *GoofysFuse) WriteFile(
 
 func (fs *GoofysFuse) Unlink(
 	ctx context.Context,
-	op *fuseops.UnlinkOp) (err error) {
-
+	op *fuseops.UnlinkOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	parent := fs.getInodeOrDie(op.Parent)
@@ -766,8 +774,8 @@ func (fs *GoofysFuse) Unlink(
 // "to" prior to sending rename to us
 func (fs *GoofysFuse) Rename(
 	ctx context.Context,
-	op *fuseops.RenameOp) (err error) {
-
+	op *fuseops.RenameOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	parent := fs.getInodeOrDie(op.OldParent)
@@ -795,8 +803,8 @@ const (
 
 func (fs *GoofysFuse) Fallocate(
 	ctx context.Context,
-	op *fuseops.FallocateOp) (err error) {
-
+	op *fuseops.FallocateOp,
+) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	inode := fs.getInodeOrDie(op.Inode)
@@ -915,7 +923,8 @@ func convertFuseOptions(flags *cfg.FlagStorage) map[string]string {
 func MountFuse(
 	ctx context.Context,
 	bucketName string,
-	flags *cfg.FlagStorage) (fs *Goofys, mfs MountedFS, err error) {
+	flags *cfg.FlagStorage,
+) (fs *Goofys, mfs MountedFS, err error) {
 	fs, err = NewGoofys(ctx, bucketName, flags)
 	if fs == nil {
 		if err == nil {

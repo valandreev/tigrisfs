@@ -18,13 +18,13 @@ package core
 
 import (
 	"bytes"
-	. "gopkg.in/check.v1"
 	"io"
 	"time"
+
+	. "gopkg.in/check.v1"
 )
 
-type BufferTest struct {
-}
+type BufferTest struct{}
 
 var _ = Suite(&BufferTest{})
 
@@ -53,7 +53,6 @@ func (r *SeqReader) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	return r.cur, nil
-
 }
 
 type SlowReader struct {
@@ -95,7 +94,7 @@ func CompareReader(r1, r2 io.Reader, bufSize int) (int, error) {
 			return -1, err2
 		}
 
-		if bytes.Compare(buf1[:], buf2[:]) != 0 {
+		if !bytes.Equal(buf1[:], buf2[:]) {
 			// fallback to slow path to find the exact point of divergent
 			for i, b := range buf1 {
 				if buf2[i] != b {
@@ -163,7 +162,7 @@ func (s *BufferTest) TestMultiReader(t *C) {
 }
 
 func (s *BufferTest) TestCGroupMemory(t *C) {
-	//test getMemoryCgroupPath()
+	// test getMemoryCgroupPath()
 	test_input := `11:hugetlb:/
                     10:memory:/user.slice
                     9:cpuset:/

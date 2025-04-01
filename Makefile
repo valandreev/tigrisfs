@@ -1,7 +1,7 @@
 VERSION=$(shell git describe --tags --always)
 ENDPOINT ?= "https://fly.storage.tigris.dev"
 
-BUILD_PARAM=-ldflags "-X github.com/yandex-cloud/tigrisfs/core/cfg.Version=$(VERSION) -X github.com/yandex-cloud/tigrisfs/core/cfg.DefaultEndpoint=$(ENDPOINT)"
+BUILD_PARAM=-ldflags "-X github.com/tigrisdata/tigrisfs/core/cfg.Version=$(VERSION) -X github.com/tigrisdata/tigrisfs/core/cfg.DefaultEndpoint=$(ENDPOINT)"
 
 run-test: s3proxy.jar build-debug
 	./test/run-tests.sh
@@ -11,6 +11,10 @@ run-xfstests: s3proxy.jar xfstests build-debug
 
 run-cluster-test: s3proxy.jar build-debug
 	./test/cluster/test_random.sh
+
+run-lint:
+	shellcheck scripts/*
+	golangci-lint --timeout=5m run --fix
 
 xfstests:
 	git clone --depth=1 https://github.com/kdave/xfstests

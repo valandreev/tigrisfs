@@ -764,8 +764,8 @@ func (fs *GoofysWin) Opendir(path string) (ret int, dhId uint64) {
 // Readdir reads a directory.
 func (fs *GoofysWin) Readdir(path string,
 	fill func(name string, stat *fuse.Stat_t, ofst int64) bool,
-	ofst int64, dhId uint64) (ret int) {
-
+	ofst int64, dhId uint64,
+) (ret int) {
 	if fuseLog.Level == logrus.DebugLevel {
 		fuseLog.Debugf("-> Readdir %v %v %v", path, ofst, dhId)
 		defer func() {
@@ -1032,7 +1032,8 @@ func (fs *GoofysWin) WinDirRefresher() {
 func MountWin(
 	ctx context.Context,
 	bucketName string,
-	flags *cfg.FlagStorage) (fs *Goofys, mfs MountedFS, err error) {
+	flags *cfg.FlagStorage,
+) (fs *Goofys, mfs MountedFS, err error) {
 	fs, err = NewGoofys(ctx, bucketName, flags)
 	if fs == nil {
 		if err == nil {

@@ -222,22 +222,19 @@ type MultipartBlobAbortOutput struct {
 	RequestId string
 }
 
-type MultipartExpireInput struct {
-}
+type MultipartExpireInput struct{}
 
 type MultipartExpireOutput struct {
 	RequestId string
 }
 
-type RemoveBucketInput struct {
-}
+type RemoveBucketInput struct{}
 
 type RemoveBucketOutput struct {
 	RequestId string
 }
 
-type MakeBucketInput struct {
-}
+type MakeBucketInput struct{}
 
 type MakeBucketOutput struct {
 	RequestId string
@@ -486,7 +483,7 @@ func (e StorageBackendInitError) ListBlobs(param *ListBlobsInput) (*ListBlobsOut
 	if param.Prefix == nil || *param.Prefix == "" {
 		return &ListBlobsOutput{
 			Items: []BlobItemOutput{
-				BlobItemOutput{
+				{
 					Key:          PString(INIT_ERR_BLOB),
 					Size:         uint64(len(e.Error())),
 					LastModified: PTime(time.Now()),

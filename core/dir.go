@@ -221,9 +221,9 @@ func isInvalidName(name string) bool {
 	return name == "" || name[0] == '/' ||
 		len(name) >= 2 && (name[0:2] == "./" || name[len(name)-2:] == "/.") ||
 		len(name) >= 3 && (name[0:3] == "../" || name[len(name)-3:] == "/..") ||
-		strings.Index(name, "//") >= 0 ||
-		strings.Index(name, "/./") >= 0 ||
-		strings.Index(name, "/../") >= 0
+		strings.Contains(name, "//") ||
+		strings.Contains(name, "/./") ||
+		strings.Contains(name, "/../")
 }
 
 func RetryListBlobs(flags *cfg.FlagStorage, cloud StorageBackend, req *ListBlobsInput) (resp *ListBlobsOutput, err error) {
@@ -917,9 +917,9 @@ func (inode *Inode) ResetForUnmount() {
 	// Reset DirTime for recursively for this node and all its child nodes.
 	// Note: resetDirTimeRec should be called without holding the lock.
 	inode.resetDirTimeRec()
-
 }
 
+/*
 func (parent *Inode) findPath(path string) (inode *Inode) {
 	dir := parent
 
@@ -940,6 +940,7 @@ func (parent *Inode) findPath(path string) (inode *Inode) {
 
 	return nil
 }
+*/
 
 func (parent *Inode) findChild(name string) (inode *Inode) {
 	parent.mu.Lock()
@@ -1062,7 +1063,6 @@ func (parent *Inode) removeChild(inode *Inode) {
 	defer inode.mu.Unlock()
 
 	parent.removeChildUnlocked(inode)
-	return
 }
 
 func (parent *Inode) insertChild(inode *Inode) {
@@ -1209,7 +1209,6 @@ func (parent *Inode) Create(name string) (*Inode, *FileHandle, error) {
 }
 
 func (parent *Inode) CreateOrOpen(name string, open bool) (inode *Inode, fh *FileHandle, err error) {
-
 	parent.logFuse("Create", name, open)
 
 	fs := parent.fs
@@ -1257,8 +1256,8 @@ func (parent *Inode) CreateOrOpen(name string, open bool) (inode *Inode, fh *Fil
 }
 
 func (parent *Inode) MkDir(
-	name string) (inode *Inode, err error) {
-
+	name string,
+) (inode *Inode, err error) {
 	parent.logFuse("MkDir", name)
 
 	parent.mu.Lock()
@@ -1355,8 +1354,8 @@ func (parent *Inode) doMkDir(name string) (inode *Inode) {
 }
 
 func (parent *Inode) CreateSymlink(
-	name string, target string) (inode *Inode, err error) {
-
+	name string, target string,
+) (inode *Inode, err error) {
 	parent.logFuse("CreateSymlink", name)
 
 	fs := parent.fs
@@ -1660,6 +1659,8 @@ func (parent *Inode) Rename(from string, newParent *Inode, to string) (err error
 		renameInCache(fromInode, newParent, to)
 	}
 
+	fuseLog.Debug().Str("fromFullName", fromFullName).Str("toFullName", toFullName).Msg("rename")
+
 	fromInode.fs.WakeupFlusher()
 
 	return
@@ -1756,7 +1757,7 @@ func renameInCache(fromInode *Inode, newParent *Inode, to string) {
 		oldFileName := fs.flags.CachePath + "/" + fromInode.FullName()
 		newDirName := fs.flags.CachePath + "/" + newParent.FullName()
 		newFileName := appendChildName(newDirName, to)
-		err := os.MkdirAll(newDirName, fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0777)>>2))
+		err := os.MkdirAll(newDirName, fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0o777)>>2))
 		if err == nil {
 			err = os.Rename(oldFileName, newFileName)
 		}

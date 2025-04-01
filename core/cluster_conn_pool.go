@@ -94,10 +94,10 @@ func (conns *ConnPool) UnaryConfiguarble(
 		peer.mu.Lock()
 		if peer.conn == nil {
 			var conn *grpc.ClientConn
-			conn, err = grpc.Dial(peer.address,
-				grpc.WithInsecure(),
-				grpc.WithBlock(),
-				grpc.WithTimeout(OUTSTAGE_TIMEOUT),
+			conn, err = grpc.Dial(peer.address, //nolint:staticcheck
+				grpc.WithInsecure(),                //nolint:staticcheck
+				grpc.WithBlock(),                   //nolint:staticcheck
+				grpc.WithTimeout(OUTSTAGE_TIMEOUT), //nolint:staticcheck
 				grpc.WithChainUnaryInterceptor(
 					LogClientInterceptor,
 				),

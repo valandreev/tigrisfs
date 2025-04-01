@@ -56,10 +56,12 @@ func (s *DirTest) TestIntelligentListCut(t *C) {
 		IsTruncated: true,
 		Items: []BlobItemOutput{
 			{Key: PString("w-o-w/item-has-dash")},
-			{Key: PString("w-o-w/item.jpg")}},
+			{Key: PString("w-o-w/item.jpg")},
+		},
 		Prefixes: []BlobPrefixOutput{
 			{Prefix: PString("w-o-w/prefix-has-dash/")},
-			{Prefix: PString("w-o-w/prefix/")}},
+			{Prefix: PString("w-o-w/prefix/")},
+		},
 	}, nil, nil, "w-o-w/")
 	t.Assert(lastName, Equals, "w-o-w/prefix/")
 	t.Assert(err, IsNil)
@@ -69,9 +71,11 @@ func (s *DirTest) TestIntelligentListCut(t *C) {
 		IsTruncated: true,
 		Items: []BlobItemOutput{
 			{Key: PString("w-o-w/item-has-dash")},
-			{Key: PString("w-o-w/item")}},
+			{Key: PString("w-o-w/item")},
+		},
 		Prefixes: []BlobPrefixOutput{
-			{Prefix: PString("w-o-w/dir/")}},
+			{Prefix: PString("w-o-w/dir/")},
+		},
 	}, nil, nil, "w-o-w/")
 	t.Assert(lastName, Equals, "w-o-w/item")
 	t.Assert(err, IsNil)

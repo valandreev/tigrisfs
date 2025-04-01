@@ -19,7 +19,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -33,9 +32,7 @@ import (
 	"github.com/aws/aws-sdk-go/private/protocol/rest"
 )
 
-var (
-	errInvalidMethod = errors.New("v2 signer does not handle HTTP POST")
-)
+//var errInvalidMethod = errors.New("v2 signer does not handle HTTP POST")
 
 const (
 	signatureVersion = "2"
@@ -70,7 +67,7 @@ type signer struct {
 	Debug       aws.LogLevelType
 	Logger      aws.Logger
 	pathStyle   bool
-	bucket      string
+	//bucket      string
 
 	Query        url.Values
 	stringToSign string

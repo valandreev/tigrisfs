@@ -17,22 +17,21 @@
 package core
 
 import (
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-
 	"context"
 	"os"
 	"sync"
 	"syscall"
 
 	"cloud.google.com/go/storage"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 	"google.golang.org/api/iterator"
 )
 
 // GCS variant of S3
 type GCS3 struct {
 	*S3Backend
-	gcs          *storage.Client
-	jsonCredFile string
+	gcs *storage.Client
+	//jsonCredFile string
 }
 
 func NewGCS3(bucket string, flags *cfg.FlagStorage, config *cfg.S3Config) (*GCS3, error) {

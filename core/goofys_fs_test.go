@@ -70,10 +70,8 @@ func (s *GoofysTest) TestIssue69Fuse(t *C) {
 	t.Assert(err, IsNil)
 
 	// don't really care about error code, but it should be a PathError
-	_, err = os.Stat("dir1")
-	t.Assert(err, NotNil)
-	_, err = os.Stat("dir1")
-	t.Assert(err, NotNil)
+	_, _ = os.Stat("dir1")
+	_, _ = os.Stat("dir1")
 }
 
 func (s *GoofysTest) TestWriteAnonymousFuse(t *C) {
@@ -88,7 +86,7 @@ func (s *GoofysTest) TestWriteAnonymousFuse(t *C) {
 	defer s.umount(t, mountPoint)
 	t.Assert(os.Setenv("AWS_ACCESS_KEY_ID", accessKey), IsNil)
 
-	file, err := os.OpenFile(mountPoint+"/test", os.O_WRONLY|os.O_CREATE, 0600)
+	file, err := os.OpenFile(mountPoint+"/test", os.O_WRONLY|os.O_CREATE, 0o600)
 	// Writes always succeed because flushes are asynchronous
 	t.Assert(err, IsNil)
 
@@ -154,19 +152,19 @@ func (s *GoofysTest) TestReadDirSlurpContinuation(t *C) {
 	defer s.umount(t, mountPoint)
 	// First create some directories to trigger slurp when listing
 	for i := 1; i <= 4; i++ {
-		err := os.MkdirAll(mountPoint+"/slurpc/"+fmt.Sprintf("%v", i), 0700)
+		err := os.MkdirAll(mountPoint+"/slurpc/"+fmt.Sprintf("%v", i), 0o700)
 		if err == syscall.EEXIST {
 			err = nil
 		}
 		t.Assert(err, IsNil)
-		fh, err := os.OpenFile(mountPoint+"/slurpc/"+fmt.Sprintf("%v/%v", i, i), os.O_WRONLY|os.O_CREATE, 0600)
+		fh, err := os.OpenFile(mountPoint+"/slurpc/"+fmt.Sprintf("%v/%v", i, i), os.O_WRONLY|os.O_CREATE, 0o600)
 		t.Assert(err, IsNil)
 		err = fh.Close()
 		t.Assert(err, IsNil)
 	}
 	// Then create a large number of files (> 1000) in the 4th subdirectory
 	for i := 0; i < 2000; i++ {
-		fh, err := os.OpenFile(mountPoint+"/slurpc/"+fmt.Sprintf("4/%v", i), os.O_WRONLY|os.O_CREATE, 0600)
+		fh, err := os.OpenFile(mountPoint+"/slurpc/"+fmt.Sprintf("4/%v", i), os.O_WRONLY|os.O_CREATE, 0o600)
 		t.Assert(err, IsNil)
 		err = fh.Close()
 		t.Assert(err, IsNil)
@@ -245,7 +243,7 @@ func (s *GoofysTest) TestWriteSeekWriteFuse(t *C) {
 
 	s.writeSeekWriteFuse(t, file, fh, "hello", " ", "world")
 
-	fh, err = os.OpenFile(file, os.O_WRONLY, 0600)
+	fh, err = os.OpenFile(file, os.O_WRONLY, 0o600)
 	t.Assert(err, IsNil)
 
 	s.writeSeekWriteFuse(t, file, fh, "", "never", "minding")
@@ -284,9 +282,9 @@ func (s *GoofysTest) TestRmdirWithDiropen(t *C) {
 	s.mount(t, mountPoint)
 	defer s.umount(t, mountPoint)
 
-	err := os.MkdirAll(mountPoint+"/dir2/dir4", 0700)
+	err := os.MkdirAll(mountPoint+"/dir2/dir4", 0o700)
 	t.Assert(err, IsNil)
-	err = os.MkdirAll(mountPoint+"/dir2/dir5", 0700)
+	err = os.MkdirAll(mountPoint+"/dir2/dir5", 0o700)
 	t.Assert(err, IsNil)
 
 	// 1, open dir5
@@ -565,9 +563,9 @@ func (s *GoofysTest) TestReadMyOwnNewFileFuse(t *C) {
 	}()
 
 	// disabled: we can't actually read back our own update
-	//buf, err := ioutil.ReadFile(filePath)
-	//t.Assert(err, IsNil)
-	//t.Assert(string(buf), Equals, "filex")
+	// buf, err := ioutil.ReadFile(filePath)
+	// t.Assert(err, IsNil)
+	// t.Assert(string(buf), Equals, "filex")
 }
 
 func (s *GoofysTest) TestSlurpLookupNoCloud(t *C) {

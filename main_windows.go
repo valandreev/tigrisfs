@@ -32,8 +32,7 @@ func isSigUsr1(s os.Signal) bool {
 
 const canDaemonize = false
 
-type Daemonizer struct {
-}
+type Daemonizer struct{}
 
 func NewDaemonizer() *Daemonizer {
 	return &Daemonizer{}
@@ -58,7 +57,8 @@ func (p *Daemonizer) NotifySuccess(success bool) {
 func mount(
 	ctx context.Context,
 	bucketName string,
-	flags *cfg.FlagStorage) (fs *core.Goofys, mfs core.MountedFS, err error) {
+	flags *cfg.FlagStorage,
+) (fs *core.Goofys, mfs core.MountedFS, err error) {
 	return core.MountWin(ctx, bucketName, flags)
 }
 

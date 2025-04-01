@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog"
 	"net/url"
 	"os"
 	"sort"
@@ -33,6 +32,7 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
+	"github.com/rs/zerolog"
 	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
@@ -151,7 +151,7 @@ type Inode struct {
 }
 
 func NewInode(fs *Goofys, parent *Inode, name string) (inode *Inode) {
-	if strings.Index(name, "/") != -1 {
+	if strings.Contains(name, "/") {
 		fuseLog.Errorf("%v is not a valid name", name)
 	}
 
@@ -346,9 +346,9 @@ func (inode *Inode) logFuse(op string, args ...interface{}) {
 	}
 }
 
-func (inode *Inode) errFuse(op string, args ...interface{}) {
-	fuseLog.Errorf("%s %d %s %+v", op, inode.Id, inode.FullName(), args)
-}
+//func (inode *Inode) errFuse(op string, args ...interface{}) {
+//	fuseLog.Errorf("%s %d %s %+v", op, inode.Id, inode.FullName(), args)
+//}
 
 func (inode *Inode) ToDir() {
 	if inode.dir == nil {
@@ -368,7 +368,6 @@ func (inode *Inode) ToDir() {
 func (inode *Inode) Ref() {
 	res := atomic.AddInt64(&inode.refcnt, 1)
 	inode.logFuse("Ref", res)
-	return
 }
 
 // LOCKS_REQUIRED(inode.mu)
@@ -508,7 +507,7 @@ func (inode *Inode) setUserMeta(key string, value []byte) error {
 		}
 		delete(inode.userMetadata, key)
 	} else {
-		if exists && bytes.Compare(oldValue, value) == 0 {
+		if exists && bytes.Equal(oldValue, value) {
 			return nil
 		}
 		inode.userMetadata[key] = value
@@ -646,8 +645,8 @@ func (inode *Inode) fillXattr() (err error) {
 
 // LOCKS_REQUIRED(inode.mu)
 func (inode *Inode) getXattrMap(name string, userOnly bool) (
-	meta map[string][]byte, newName string, err error) {
-
+	meta map[string][]byte, newName string, err error,
+) {
 	cloud, _ := inode.cloud()
 	xattrPrefix := cloud.Capabilities().Name + "."
 
@@ -823,11 +822,11 @@ func (inode *Inode) ListXattr() ([]string, error) {
 	cloud, _ := inode.cloud()
 	cloudXattrPrefix := cloud.Capabilities().Name + "."
 
-	for k, _ := range inode.s3Metadata {
+	for k := range inode.s3Metadata {
 		xattrs = append(xattrs, cloudXattrPrefix+k)
 	}
 
-	for k, _ := range inode.userMetadata {
+	for k := range inode.userMetadata {
 		xattrs = append(xattrs, "user."+k)
 	}
 
@@ -1019,9 +1018,7 @@ func (inode *Inode) DumpThis(fn string, withBuffers bool, noLock bool) (children
 			dirData["deletedChildren"] = deletedNames
 		}
 		dataMap["dir"] = dirData
-		for _, child := range inode.dir.Children {
-			children = append(children, child)
-		}
+		children = append(children, inode.dir.Children...)
 	}
 
 	dumpBuf, _ := json.Marshal(dataMap)
@@ -1032,7 +1029,7 @@ func (inode *Inode) DumpThis(fn string, withBuffers bool, noLock bool) (children
 		dump += "\n" + b
 	}
 
-	fuseLog.Errorf(dump)
+	fuseLog.Errorf("%s", dump)
 
 	return children
 }

@@ -106,10 +106,9 @@ func main() {
 			daemonizer = NewDaemonizer()
 			// Do not close stderr before mounting to print mount errors
 			initLogFile := flags.LogFile
-			if initLogFile == "" || initLogFile == "sysmainLog" {
+			if initLogFile == "" || initLogFile == "syslog" {
 				initLogFile = "stderr"
 			}
-			initLogFile = "stderr"
 			if err = daemonizer.Daemonize(initLogFile); err != nil {
 				return err
 			}
@@ -132,7 +131,7 @@ func main() {
 		if pprof != "" {
 			go func() {
 				addr := pprof
-				if strings.Index(addr, ":") == -1 {
+				if !strings.Contains(addr, ":") {
 					addr = "127.0.0.1:" + addr
 				}
 				mainLog.Println(http.ListenAndServe(addr, nil))

@@ -18,11 +18,11 @@ package core
 
 import (
 	"context"
-	"github.com/tigrisdata/tigrisfs/log"
 	"net"
 
 	"github.com/tigrisdata/tigrisfs/core/cfg"
 	"github.com/tigrisdata/tigrisfs/core/pb"
+	"github.com/tigrisdata/tigrisfs/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"

@@ -22,8 +22,10 @@ import (
 	"github.com/tidwall/btree"
 )
 
-var ErrBufferIsMissing = errors.New("tried to read from a missing buffer")
-var ErrBufferIsLoading = errors.New("tried to read from a loading buffer")
+var (
+	ErrBufferIsMissing = errors.New("tried to read from a missing buffer")
+	ErrBufferIsLoading = errors.New("tried to read from a loading buffer")
+)
 
 type BufferState int16
 

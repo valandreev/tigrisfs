@@ -22,7 +22,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/tigrisdata/tigrisfs/log"
 	"os"
 	"os/signal"
 	"strings"
@@ -31,9 +30,9 @@ import (
 
 	"github.com/kardianos/osext"
 	daemon "github.com/sevlyar/go-daemon"
-
 	"github.com/tigrisdata/tigrisfs/core"
 	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 )
 
 var signalsToHandle = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGUSR1}
@@ -135,7 +134,8 @@ func (p *Daemonizer) NotifySuccess(success bool) {
 func mount(
 	ctx context.Context,
 	bucketName string,
-	flags *cfg.FlagStorage) (fs *core.Goofys, mfs core.MountedFS, err error) {
+	flags *cfg.FlagStorage,
+) (fs *core.Goofys, mfs core.MountedFS, err error) {
 	if flags.ClusterMode {
 		return core.MountCluster(ctx, bucketName, flags)
 	} else {

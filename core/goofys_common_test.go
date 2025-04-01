@@ -23,8 +23,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/tigrisdata/tigrisfs/log"
 	"io"
 	"net"
 	"os"
@@ -36,6 +34,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/tigrisdata/tigrisfs/log"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest"
@@ -172,7 +173,7 @@ func groupByDecresingDepths(items []string) [][]string {
 	sort.Sort(sort.Reverse(sort.IntSlice(decreasingDepths)))
 	ret := [][]string{}
 	for _, depth := range decreasingDepths {
-		group, _ := depthToGroup[depth]
+		group := depthToGroup[depth]
 		ret = append(ret, group)
 	}
 	return ret
@@ -346,7 +347,7 @@ func (s *GoofysTest) TearDownTest(t *C) {
 	close(s.timeout)
 	s.timeout = nil
 
-	if strings.Index(t.TestName(), "NoCloud") >= 0 {
+	if strings.Contains(t.TestName(), "NoCloud") {
 		return
 	}
 
@@ -490,7 +491,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 
 	s.setUpTestTimeout(t, PerTestTimeout)
 
-	if strings.Index(t.TestName(), "NoCloud") >= 0 {
+	if strings.Contains(t.TestName(), "NoCloud") {
 		return
 	}
 
@@ -502,10 +503,10 @@ func (s *GoofysTest) SetUpTest(t *C) {
 	}
 
 	flags := cfg.DefaultFlags()
-	if strings.Index(t.TestName(), "Mem20M") >= 0 {
+	if strings.Contains(t.TestName(), "Mem20M") {
 		// has to be set before create FS
 		flags.MemoryLimit = 20 * 1024 * 1024
-	} else if strings.Index(t.TestName(), "Mem100M") >= 0 {
+	} else if strings.Contains(t.TestName(), "Mem100M") {
 		// has to be set before create FS
 		flags.MemoryLimit = 100 * 1024 * 1024
 	}

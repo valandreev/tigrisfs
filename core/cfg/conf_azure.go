@@ -18,23 +18,22 @@ package cfg
 import (
 	"context"
 	"fmt"
-	"github.com/tigrisdata/tigrisfs/log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
+	azblob "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
+	azblob2 "github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/Azure/go-autorest/autorest/azure/cli"
-
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	azblob "github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
-	azblob2 "github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/mitchellh/go-homedir"
+	"github.com/tigrisdata/tigrisfs/log"
 	ini "gopkg.in/ini.v1"
 )
 
@@ -55,8 +54,7 @@ func (config *AZBlobConfig) Init() {
 	config.TokenRenewBuffer = 15 * time.Minute
 }
 
-type returnRequestPolicy struct {
-}
+type returnRequestPolicy struct{}
 
 func (p returnRequestPolicy) Do(ctx context.Context, r pipeline.Request) (pipeline.Response, error) {
 	resp := pipeline.NewHTTPResponse(&http.Response{})
@@ -75,7 +73,7 @@ func (config *AZBlobConfig) WithAuthorization() autorest.PrepareDecorator {
 			}
 
 			resp, err := cred.New(returnRequestPolicy{}, nil).Do(context.TODO(),
-				pipeline.Request{r})
+				pipeline.Request{Request: r})
 			if err != nil {
 				return nil, err
 			}
@@ -103,7 +101,6 @@ type AzureAuthorizerConfig struct {
 }
 
 var azbLog = log.GetLogger("azblob")
-var adls1Log = log.GetLogger("adlv1")
 
 func sptTest(spt *adal.ServicePrincipalToken) (autorest.Authorizer, error) {
 	err := spt.EnsureFresh()

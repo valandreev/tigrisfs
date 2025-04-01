@@ -39,7 +39,7 @@ import (
 )
 
 func (s *GoofysTest) mountCommon(t *C, mountPoint string, sameProc bool) {
-	err := os.MkdirAll(mountPoint, 0700)
+	err := os.MkdirAll(mountPoint, 0o700)
 	if err == syscall.EEXIST {
 		err = nil
 	}
@@ -110,8 +110,8 @@ func (s *GoofysTest) SetUpSuite(t *C) {
 	if s.tmp == "" {
 		s.tmp = "/tmp"
 	}
-	testLog.E(os.WriteFile(s.tmp+"/fuse-test.sh", []byte(test_embed.FuseTestSh), 0755))
-	testLog.E(os.WriteFile(s.tmp+"/bench.sh", []byte(bench_embed.BenchSh), 0755))
+	testLog.E(os.WriteFile(s.tmp+"/fuse-test.sh", []byte(test_embed.FuseTestSh), 0o755))
+	testLog.E(os.WriteFile(s.tmp+"/bench.sh", []byte(bench_embed.BenchSh), 0o755))
 }
 
 func (s *GoofysTest) runFuseTest(t *C, mountPoint string, umount bool, cmdArgs ...string) {
@@ -224,7 +224,7 @@ func (s *GoofysTest) TestClientForkExec(t *C) {
 	file := mountPoint + "/TestClientForkExec"
 
 	// Create new file.
-	fh, err := os.OpenFile(file, os.O_CREATE|os.O_RDWR, 0600)
+	fh, err := os.OpenFile(file, os.O_CREATE|os.O_RDWR, 0o600)
 	t.Assert(err, IsNil)
 	defer func() { // Defer close file if it's not already closed.
 		if fh != nil {
@@ -254,7 +254,7 @@ func (s *GoofysTest) TestClientForkExec(t *C) {
 	t.Assert(string(content), Equals, "1.1;1.2;")
 
 	// Repeat the same excercise, but now with an existing file.
-	fh, err = os.OpenFile(file, os.O_RDWR, 0600)
+	fh, err = os.OpenFile(file, os.O_RDWR, 0o600)
 	// Write to file.
 	_, err = fh.WriteString("2.1;")
 	// fork+exec.
@@ -282,7 +282,7 @@ func (s *GoofysTest) TestXAttrFuse(t *C) {
 	_, checkETag := s.cloud.Delegate().(*S3Backend)
 	xattrPrefix := s.cloud.Capabilities().Name + "."
 
-	//fuseLog.Level = logrus.DebugLevel
+	// fuseLog.Level = logrus.DebugLevel
 	mountPoint := s.tmp + "/mnt" + s.fs.bucket
 	s.mount(t, mountPoint)
 	defer s.umount(t, mountPoint)
@@ -420,10 +420,10 @@ func (s *GoofysTest) TestRenameBeforeCloseFuse(t *C) {
 	from := mountPoint + "/newfile"
 	to := mountPoint + "/newfile2"
 
-	err := os.WriteFile(from, []byte(""), 0600)
+	err := os.WriteFile(from, []byte(""), 0o600)
 	t.Assert(err, IsNil)
 
-	fh, err := os.OpenFile(from, os.O_WRONLY, 0600)
+	fh, err := os.OpenFile(from, os.O_WRONLY, 0o600)
 	t.Assert(err, IsNil)
 	defer func() {
 		// close the file if the test failed so we can unmount

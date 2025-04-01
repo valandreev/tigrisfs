@@ -17,10 +17,6 @@
 package core
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/log"
-
 	"bytes"
 	"context"
 	"encoding/json"
@@ -30,6 +26,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 
 	adl "github.com/Azure/azure-sdk-for-go/services/datalake/store/2016-11-01/filesystem"
 	"github.com/Azure/go-autorest/autorest"
@@ -75,7 +75,7 @@ type ADLv1MultipartBlobCommitInput struct {
 
 func IsADLv1Endpoint(endpoint string) bool {
 	return strings.HasPrefix(endpoint, "adl://")
-	//return strings.HasSuffix(endpoint, ".azuredatalakestore.net")
+	// return strings.HasSuffix(endpoint, ".azuredatalakestore.net")
 }
 
 func adlLogResp(level zerolog.Level, r *http.Response) {
@@ -149,7 +149,7 @@ func NewADLv1(bucket string, flags *cfg.FlagStorage, config *cfg.ADLv1Config) (*
 		account: parts[0],
 		bucket:  bucket,
 		cap: Capabilities{
-			//NoParallelMultipart: true,
+			// NoParallelMultipart: true,
 			DirBlob: true,
 			Name:    "adl",
 			// ADLv1 fails with 404 if we upload data
@@ -261,12 +261,11 @@ func (b *ADLv1) HeadBlob(param *HeadBlobInput) (*HeadBlobOutput, error) {
 		BlobItemOutput: adlv1FileStatus2BlobItem(res.FileStatus, &param.Key),
 		IsDirBlob:      res.FileStatus.Type == "DIRECTORY",
 	}, nil
-
 }
 
 func (b *ADLv1) appendToListResults(path string, recursive bool, startAfter string,
-	maxKeys *uint32, prefixes []BlobPrefixOutput, items []BlobItemOutput) (adl.FileStatusesResult, []BlobPrefixOutput, []BlobItemOutput, error) {
-
+	maxKeys *uint32, prefixes []BlobPrefixOutput, items []BlobItemOutput,
+) (adl.FileStatusesResult, []BlobPrefixOutput, []BlobItemOutput, error) {
 	res, err := b.client.ListFileStatus(context.TODO(), b.account, b.path(path),
 		nil, "", "", nil)
 	err = mapADLv1Error(res.Response.Response, err, false)

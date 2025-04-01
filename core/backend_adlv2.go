@@ -18,10 +18,6 @@
 package core
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/log"
-
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -39,6 +35,9 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/tigrisdata/tigrisfs/log"
 )
 
 type ADLv2 struct {
@@ -51,8 +50,10 @@ type ADLv2 struct {
 	bucket string
 }
 
-const ADL2_CLIENT_REQUEST_ID = "X-Ms-Client-Request-Id"
-const ADL2_REQUEST_ID = "X-Ms-Request-Id"
+const (
+	ADL2_CLIENT_REQUEST_ID = "X-Ms-Client-Request-Id"
+	ADL2_REQUEST_ID        = "X-Ms-Request-Id"
+)
 
 var adl2Log = log.GetLogger("adlv2")
 
@@ -230,7 +231,7 @@ func adlv2ErrLogHeaders(errCode string, resp *http.Response) {
 	switch errCode {
 	case "MissingRequiredHeader", "UnsupportedHeader":
 		var s strings.Builder
-		for k, _ := range resp.Request.Header {
+		for k := range resp.Request.Header {
 			s.WriteString(k)
 			s.WriteString(" ")
 		}
@@ -252,7 +253,6 @@ func adlv2ErrLogHeaders(errCode string, resp *http.Response) {
 }
 
 func mapADLv2Error(resp *http.Response, err error, rawError bool) error {
-
 	if resp == nil {
 		if err != nil {
 			if detailedError, ok := err.(autorest.DetailedError); ok {
@@ -624,7 +624,7 @@ func (b *ADLv2) toADLProperties(metadata map[string]*string) string {
 		buf.WriteString(base64.StdEncoding.EncodeToString([]byte(*v)))
 		buf.WriteString(",")
 	}
-	var s = buf.String()
+	s := buf.String()
 	if len(s) != 0 {
 		// remove trailing comma
 		s = s[:len(s)-1]
@@ -633,7 +633,8 @@ func (b *ADLv2) toADLProperties(metadata map[string]*string) string {
 }
 
 func (b *ADLv2) create(key string, pathType adl2.PathResourceType, contentType *string,
-	metadata map[string]*string, leaseId string) (resp autorest.Response, err error) {
+	metadata map[string]*string, leaseId string,
+) (resp autorest.Response, err error) {
 	resp, err = b.client.Create(context.TODO(), b.bucket, key,
 		pathType, "", "", "", "", "", "", "", NilStr(contentType),
 		"", "", "", "", leaseId, "", b.toADLProperties(metadata), "", "", "", "", "", "",
@@ -645,7 +646,8 @@ func (b *ADLv2) create(key string, pathType adl2.PathResourceType, contentType *
 }
 
 func (b *ADLv2) append(key string, offset int64, size int64, body io.ReadSeeker,
-	leaseId string) (resp autorest.Response, err error) {
+	leaseId string,
+) (resp autorest.Response, err error) {
 	resp, err = b.client.Update(context.TODO(), adl2.Append, b.bucket,
 		key, &offset, nil, nil, &size, "", leaseId, "",
 		"", "", "", "", "", "", "", "", "", "",
@@ -789,7 +791,8 @@ func (b *ADLv2) MultipartBlobBegin(param *MultipartBlobBeginInput) (*MultipartBl
 }
 
 func (b *ADLv2) lease(action adl2.PathLeaseAction, key string, leaseId string, durationSec int32,
-	ifMatch string) error {
+	ifMatch string,
+) error {
 	var proposeLeaseId string
 	var prevLeaseId string
 	if action == adl2.Acquire {
@@ -884,7 +887,7 @@ func (b *ADLv2) MultipartExpire(param *MultipartExpireInput) (*MultipartExpireOu
 }
 
 func (b *ADLv2) RemoveBucket(param *RemoveBucketInput) (*RemoveBucketOutput, error) {
-	fs := adl2.FilesystemClient{b.client.BaseClient}
+	fs := adl2.FilesystemClient{BaseClient: b.client.BaseClient}
 	res, err := fs.Delete(context.TODO(), b.bucket, "", "", uuid.New().String(), nil, "")
 	if err != nil {
 		return nil, mapADLv2Error(res.Response, err, false)
@@ -893,7 +896,7 @@ func (b *ADLv2) RemoveBucket(param *RemoveBucketInput) (*RemoveBucketOutput, err
 }
 
 func (b *ADLv2) MakeBucket(param *MakeBucketInput) (*MakeBucketOutput, error) {
-	fs := adl2.FilesystemClient{b.client.BaseClient}
+	fs := adl2.FilesystemClient{BaseClient: b.client.BaseClient}
 	res, err := fs.Create(context.TODO(), b.bucket, "", uuid.New().String(), nil, "")
 	if err != nil {
 		return nil, mapADLv2Error(res.Response, err, false)
@@ -1761,7 +1764,6 @@ func (client adl2PathClient) UpdatePreparer(ctx context.Context, action adl2.Pat
 // UpdateSender sends the Update request. The method will close the
 // http.Response Body if it receives an error.
 func (client adl2PathClient) UpdateSender(req *http.Request) (*http.Response, error) {
-
 	sd := autorest.GetSendDecorators(req.Context(), autorest.DoRetryForStatusCodes(client.RetryAttempts, client.RetryDuration, autorest.StatusCodesForRetry...))
 	return autorest.SendWithSender(client, req, sd...)
 }
