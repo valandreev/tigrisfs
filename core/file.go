@@ -638,15 +638,17 @@ func (inode *Inode) recordFlushError(err error) {
 
 func (inode *Inode) TryFlush(priority int) bool {
 	overDeleted := false
+	inode.mu.Lock()
 	parent := inode.Parent
 	if parent != nil {
+		inode.mu.Unlock()
 		parent.mu.Lock()
 		if parent.dir.DeletedChildren != nil {
 			_, overDeleted = parent.dir.DeletedChildren[inode.Name]
 		}
 		parent.mu.Unlock()
+		inode.mu.Lock()
 	}
-	inode.mu.Lock()
 	defer inode.mu.Unlock()
 	if inode.Parent != parent {
 		return false

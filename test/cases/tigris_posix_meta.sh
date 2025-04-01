@@ -13,13 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-BASE_DIR=/tmp/tmp.olAMFPhcRe
-#BASE_DIR=$(mktemp -d)
+set -ex
+
+. "$(dirname "$0")/../mount.sh"
+
 CASE=posix_meta
-DIR=$BASE_DIR/$CASE
+DIR=$MNT_DIR/$CASE/$RANDOM
+
+df -h
 
 mkdir -p $DIR
-touch $DIR/file1
-ls -la $DIR
-chown $USER:users $DIR/file1
-ls -la $DIR
+fn=$DIR/file.$RANDOM
+touch $fn
+[ "$(stat -c '%G' $fn)" == "$USER" ]
+chown $USER:users $fn
+[ "$(stat -c '%G' $fn)" == "users" ]
+touch $fn
+[ "$(stat -c '%G' $fn)" == "users" ]
+
+_umount $MNT_DIR
+FS_BIN=$(dirname "$0")/../../tigrisfs _mount $MNT_DIR --enable-perms
+sleep 5
+
+[ "$(stat -c '%G' $fn)" == "users" ]

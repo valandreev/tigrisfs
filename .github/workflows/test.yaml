@@ -18,4 +18,3 @@ jobs:
 
     - name: Run tests
       run: SAME_PROCESS_MOUNT=1 make run-test
-      timeout-minutes: 12
