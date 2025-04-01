@@ -1,6 +1,7 @@
 // Copyright 2020 Ka-Hing Cheung
 // Copyright 2020 Databricks
 // Copyright 2021 Yandex LLC
+// Copyright 2024 Tigris Data, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

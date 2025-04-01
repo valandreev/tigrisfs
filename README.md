@@ -16,7 +16,7 @@ FUSE file systems based on S3 typically have performance problems, especially wi
 
 TigrisFS attempts to solve these problems by using aggressive parallelism and asynchrony.
 
-Also check out our CSI S3 driver (TigrisFS-based): https://github.com/yandex-cloud/csi-s3
+Also check out our CSI S3 driver (GeeseFS-based): https://github.com/yandex-cloud/csi-s3
 
 # POSIX Compatibility Matrix
 

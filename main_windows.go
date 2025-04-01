@@ -1,4 +1,5 @@
 // Copyright 2021 Yandex LLC
+// Copyright 2024 Tigris Data, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,11 +20,11 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/tigrisdata/tigrisfs/core/cfg"
 	"github.com/tigrisdata/tigrisfs/core"
+	"github.com/tigrisdata/tigrisfs/core/cfg"
 )
 
-var signalsToHandle = []os.Signal{ os.Interrupt, syscall.SIGTERM }
+var signalsToHandle = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
 func isSigUsr1(s os.Signal) bool {
 	return false
