@@ -26,7 +26,6 @@ import (
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/rs/zerolog"
-	"github.com/sirupsen/logrus"
 	"github.com/tigrisdata/tigrisfs/core/cfg"
 	"github.com/winfsp/cgofuse/fuse"
 )
@@ -115,11 +114,15 @@ func (fs *GoofysWin) Statfs(path string, stat *fuse.Statfs_t) int {
 	return 0
 }
 
+func logDebugEnabled() bool {
+	return fuseLog.GetLevel() <= zerolog.DebugLevel
+}
+
 func mapWinError(err error) int {
 	if err == nil {
 		return 0
 	}
-	if fuseLog.Level == zerolog.DebugLevel {
+	if logDebugEnabled() {
 		pc, _, _, _ := runtime.Caller(1)
 		details := runtime.FuncForPC(pc)
 		fuseLog.Debugf("%v: error %v", details, err)
@@ -181,7 +184,7 @@ func mapWinError(err error) int {
 
 // Mknod creates a file node.
 func (fs *GoofysWin) Mknod(path string, mode uint32, dev uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Mknod %v %v %v", path, mode, dev)
 		defer func() {
 			fuseLog.Debugf("<- Mknod %v %v %v = %v", path, mode, dev, ret)
@@ -216,7 +219,7 @@ func (fs *GoofysWin) Mknod(path string, mode uint32, dev uint64) (ret int) {
 		fh.Release()
 	}
 	inode.Attributes.Rdev = uint32(dev)
-	inode.setFileMode(fuseops.ConvertFileMode(mode))
+	_, _ = inode.setFileMode(fuseops.ConvertFileMode(mode))
 
 	if fs.flags.FsyncOnClose {
 		err = inode.SyncFile()
@@ -230,7 +233,7 @@ func (fs *GoofysWin) Mknod(path string, mode uint32, dev uint64) (ret int) {
 
 // Mkdir creates a directory.
 func (fs *GoofysWin) Mkdir(path string, mode uint32) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Mkdir %v %v", path, mode)
 		defer func() {
 			fuseLog.Debugf("<- Mkdir %v %v = %v", path, mode, ret)
@@ -259,7 +262,7 @@ func (fs *GoofysWin) Mkdir(path string, mode uint32) (ret int) {
 
 // Unlink removes a file.
 func (fs *GoofysWin) Unlink(path string) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Unlink %v", path)
 		defer func() {
 			fuseLog.Debugf("<- Unlink %v = %v", path, ret)
@@ -279,7 +282,7 @@ func (fs *GoofysWin) Unlink(path string) (ret int) {
 
 // Rmdir removes a directory.
 func (fs *GoofysWin) Rmdir(path string) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Rmdir %v", path)
 		defer func() {
 			fuseLog.Debugf("<- Rmdir %v = %v", path, ret)
@@ -299,7 +302,7 @@ func (fs *GoofysWin) Rmdir(path string) (ret int) {
 
 // Symlink creates a symbolic link.
 func (fs *GoofysWin) Symlink(target string, newpath string) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Symlink %v %v", target, newpath)
 		defer func() {
 			fuseLog.Debugf("<- Symlink %v %v = %v", target, newpath, ret)
@@ -313,13 +316,13 @@ func (fs *GoofysWin) Symlink(target string, newpath string) (ret int) {
 		return mapWinError(err)
 	}
 
-	parent.CreateSymlink(child, target)
+	_, _ = parent.CreateSymlink(child, target)
 	return 0
 }
 
 // Readlink reads the target of a symbolic link.
 func (fs *GoofysWin) Readlink(path string) (ret int, target string) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Readlink %v", path)
 		defer func() {
 			fuseLog.Debugf("<- Readlink %v = %v %v", path, ret, target)
@@ -343,7 +346,7 @@ func (fs *GoofysWin) Readlink(path string) (ret int, target string) {
 
 // Rename renames a file.
 func (fs *GoofysWin) Rename(oldpath string, newpath string) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Rename %v %v", oldpath, newpath)
 		defer func() {
 			fuseLog.Debugf("<- Rename %v %v = %v", oldpath, newpath, ret)
@@ -368,7 +371,7 @@ func (fs *GoofysWin) Rename(oldpath string, newpath string) (ret int) {
 
 // Chmod changes the permission bits of a file.
 func (fs *GoofysWin) Chmod(path string, mode uint32) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Chmod %v %v", path, mode)
 		defer func() {
 			fuseLog.Debugf("<- Chmod %v %v = %v", path, mode, ret)
@@ -389,7 +392,7 @@ func (fs *GoofysWin) Chmod(path string, mode uint32) (ret int) {
 
 // Chown changes the owner and group of a file.
 func (fs *GoofysWin) Chown(path string, uid uint32, gid uint32) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Chown %v %v %v", path, uid, gid)
 		defer func() {
 			fuseLog.Debugf("<- Chown %v %v %v = %v", path, uid, gid, ret)
@@ -408,7 +411,7 @@ func (fs *GoofysWin) Chown(path string, uid uint32, gid uint32) (ret int) {
 
 // Utimens changes the access and modification times of a file.
 func (fs *GoofysWin) Utimens(path string, tmsp []fuse.Timespec) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Utimens %v %v", path, tmsp)
 		defer func() {
 			fuseLog.Debugf("<- Utimens %v %v = %v", path, tmsp, ret)
@@ -430,7 +433,7 @@ func (fs *GoofysWin) Utimens(path string, tmsp []fuse.Timespec) (ret int) {
 
 // Access is only used by winfsp with FSP_FUSE_DELETE_OK. Ignore it
 func (fs *GoofysWin) Access(path string, mask uint32) int {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("<--> Access %v %v = 0", path, mask)
 	}
 	atomic.AddInt64(&fs.stats.noops, 1)
@@ -440,7 +443,7 @@ func (fs *GoofysWin) Access(path string, mask uint32) int {
 // Create creates and opens a file.
 // The flags are a combination of the fuse.O_* constants.
 func (fs *GoofysWin) Create(path string, flags int, mode uint32) (ret int, fhId uint64) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Create %v %v %v", path, flags, mode)
 		defer func() {
 			fuseLog.Debugf("<- Create %v %v %v = %v %v", path, flags, mode, ret, fhId)
@@ -455,10 +458,8 @@ func (fs *GoofysWin) Create(path string, flags int, mode uint32) (ret int, fhId 
 	}
 
 	if fs.flags.FlushFilename != "" && child == fs.flags.FlushFilename {
-		err = fs.SyncTree(parent)
-		if err == nil {
-			err = syscall.ENOENT
-		}
+		fs.SyncTree(parent)
+		err = syscall.ENOENT
 		return mapWinError(err), 0
 	}
 
@@ -475,7 +476,7 @@ func (fs *GoofysWin) Create(path string, flags int, mode uint32) (ret int, fhId 
 		return mapWinError(err), 0
 	}
 
-	inode.setFileMode(fuseops.ConvertFileMode(mode))
+	_, _ = inode.setFileMode(fuseops.ConvertFileMode(mode))
 
 	handleID := fs.AddFileHandle(fh)
 
@@ -490,7 +491,7 @@ func endsWith(path, part string) bool {
 // Open opens a file.
 // The flags are a combination of the fuse.O_* constants.
 func (fs *GoofysWin) Open(path string, flags int) (ret int, fhId uint64) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Open %v %v", path, flags)
 		defer func() {
 			fuseLog.Debugf("<- Open %v %v = %v %v", path, flags, ret, fhId)
@@ -506,21 +507,14 @@ func (fs *GoofysWin) Open(path string, flags int) (ret int, fhId uint64) {
 			if err != nil {
 				return mapWinError(err), 0
 			}
-			if err == nil {
-				err = fs.SyncTree(parent)
-			}
-			if err == nil {
-				err = syscall.ENOENT
-			}
+			fs.SyncTree(parent)
 		}
 		if endsWith(path, fs.flags.RefreshFilename) {
 			parent, _, err := fs.LookupParent(path)
 			if err != nil {
 				return mapWinError(err), 0
 			}
-			if err == nil {
-				err = fs.RefreshInodeCache(parent)
-			}
+			err = fs.RefreshInodeCache(parent)
 			if err == nil {
 				err = syscall.ENOENT
 			}
@@ -540,7 +534,7 @@ func (fs *GoofysWin) Open(path string, flags int) (ret int, fhId uint64) {
 
 // Getattr gets file attributes.
 func (fs *GoofysWin) Getattr(path string, stat *fuse.Stat_t, fh uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Getattr %v %v", path, fh)
 		defer func() {
 			fuseLog.Debugf("<- Getattr %v %v = %v %v", path, fh, ret, *stat)
@@ -580,7 +574,7 @@ func makeFuseAttributes(attr *fuseops.InodeAttributes, stat *fuse.Stat_t) {
 
 // Truncate changes the size of a file.
 func (fs *GoofysWin) Truncate(path string, size int64, fh uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Truncate %v %v %v", path, size, fh)
 		defer func() {
 			fuseLog.Debugf("<- Truncate %v %v %v = %v", path, size, fh, ret)
@@ -601,7 +595,7 @@ func (fs *GoofysWin) Truncate(path string, size int64, fh uint64) (ret int) {
 
 // Read reads data from a file.
 func (fs *GoofysWin) Read(path string, buff []byte, ofst int64, fhId uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Read %v %v %v %v", path, len(buff), ofst, fhId)
 		defer func() {
 			fuseLog.Debugf("<- Read %v %v %v %v = %v", path, len(buff), ofst, fhId, ret)
@@ -632,7 +626,7 @@ func (fs *GoofysWin) Read(path string, buff []byte, ofst int64, fhId uint64) (re
 
 // Write writes data to a file.
 func (fs *GoofysWin) Write(path string, buff []byte, ofst int64, fhId uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Write %v %v %v %v", path, len(buff), ofst, fhId)
 		defer func() {
 			fuseLog.Debugf("<- Write %v %v %v %v = %v", path, len(buff), ofst, fhId, ret)
@@ -658,7 +652,7 @@ func (fs *GoofysWin) Write(path string, buff []byte, ofst int64, fhId uint64) (r
 
 // Flush flushes cached file data. Ignore it.
 func (fs *GoofysWin) Flush(path string, fhId uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("<--> Flush %v %v = 0", path, fhId)
 	}
 	atomic.AddInt64(&fs.stats.noops, 1)
@@ -667,7 +661,7 @@ func (fs *GoofysWin) Flush(path string, fhId uint64) (ret int) {
 
 // Release closes an open file.
 func (fs *GoofysWin) Release(path string, fhId uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Release %v %v", path, fhId)
 		defer func() {
 			fuseLog.Debugf("<- Release %v %v = %v", path, fhId, ret)
@@ -700,7 +694,7 @@ func (fs *GoofysWin) Release(path string, fhId uint64) (ret int) {
 
 // Fsync synchronizes file contents.
 func (fs *GoofysWin) Fsync(path string, datasync bool, fhId uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Fsync %v %v %v", path, datasync, fhId)
 		defer func() {
 			fuseLog.Debugf("<- Fsync %v %v %v = %v", path, datasync, fhId, ret)
@@ -727,9 +721,9 @@ func (fs *GoofysWin) Fsync(path string, datasync bool, fhId uint64) (ret int) {
 			}
 		}
 		if inode.Id == fuseops.RootInodeID {
-			err = fs.SyncTree(nil)
+			fs.SyncTree(nil)
 		} else if inode.isDir() {
-			err = fs.SyncTree(inode)
+			fs.SyncTree(inode)
 		} else {
 			err = inode.SyncFile()
 		}
@@ -741,7 +735,7 @@ func (fs *GoofysWin) Fsync(path string, datasync bool, fhId uint64) (ret int) {
 
 // Opendir opens a directory.
 func (fs *GoofysWin) Opendir(path string) (ret int, dhId uint64) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Opendir %v", path)
 		defer func() {
 			fuseLog.Debugf("<- Opendir %v = %v %v", path, ret, dhId)
@@ -766,7 +760,7 @@ func (fs *GoofysWin) Readdir(path string,
 	fill func(name string, stat *fuse.Stat_t, ofst int64) bool,
 	ofst int64, dhId uint64,
 ) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Readdir %v %v %v", path, ofst, dhId)
 		defer func() {
 			fuseLog.Debugf("<- Readdir %v %v %v = %v", path, ofst, dhId, ret)
@@ -823,7 +817,7 @@ func (fs *GoofysWin) Readdir(path string,
 
 // Releasedir closes an open directory.
 func (fs *GoofysWin) Releasedir(path string, dhId uint64) (ret int) {
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Releasedir %v %v", path, dhId)
 		defer func() {
 			fuseLog.Debugf("<- Releasedir %v %v = %v", path, dhId, ret)
@@ -836,7 +830,7 @@ func (fs *GoofysWin) Releasedir(path string, dhId uint64) (ret int) {
 	dh := fs.dirHandles[fuseops.HandleID(dhId)]
 	fs.mu.RUnlock()
 
-	dh.CloseDir()
+	_ = dh.CloseDir()
 
 	fs.mu.Lock()
 	delete(fs.dirHandles, fuseops.HandleID(dhId))
@@ -856,7 +850,7 @@ func (fs *GoofysWin) Setxattr(path string, name string, value []byte, flags int)
 		return -fuse.EOPNOTSUPP
 	}
 
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Setxattr %v %v %v %v", path, name, value, flags)
 		defer func() {
 			fuseLog.Debugf("<- Setxattr %v %v %v %v = %v", path, name, value, flags, ret)
@@ -885,7 +879,7 @@ func (fs *GoofysWin) Getxattr(path string, name string) (ret int, data []byte) {
 		return -fuse.EOPNOTSUPP, nil
 	}
 
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Getxattr %v %v", path, name)
 		defer func() {
 			fuseLog.Debugf("<- Getxattr %v %v = %v %v", path, name, ret, data)
@@ -913,7 +907,7 @@ func (fs *GoofysWin) Removexattr(path string, name string) (ret int) {
 		return -fuse.EOPNOTSUPP
 	}
 
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Removexattr %v %v", path, name)
 		defer func() {
 			fuseLog.Debugf("<- Removexattr %v %v = %v", path, name, ret)
@@ -937,7 +931,7 @@ func (fs *GoofysWin) Listxattr(path string, fill func(name string) bool) (ret in
 		return -fuse.EOPNOTSUPP
 	}
 
-	if fuseLog.Level == logrus.DebugLevel {
+	if logDebugEnabled() {
 		fuseLog.Debugf("-> Listxattr %v", path)
 		defer func() {
 			fuseLog.Debugf("<- Listxattr %v = %v", path, ret)
@@ -1077,7 +1071,7 @@ func mountFuseFS(fs *Goofys) (mfs MountedFS, err error) {
 }
 
 // Join is a part of MountedFS interface
-func (fs *GoofysWin) Join(ctx context.Context) error {
+func (fs *GoofysWin) Join(_ context.Context) error {
 	<-fs.initCh
 	return nil
 }

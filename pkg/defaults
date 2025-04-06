@@ -10,4 +10,4 @@
 #AWS_PROFILE=
 
 # Mount options
-#OPTS="-o allow_other,uid=1000,gid=1000,umask=0002"
+#OPTS="-o allow_other --gid=1001 --uid=1001"

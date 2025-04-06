@@ -20,14 +20,12 @@ import (
 	"fmt"
 	"io"
 	glog "log"
-	"log/syslog"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/rs/zerolog/pkgerrors"
 )
 
@@ -50,11 +48,7 @@ func logStderr(msg string, args ...any) {
 
 func InitLoggerRedirect(logFileName string) {
 	if logFileName == "syslog" {
-		lf, err := syslog.New(syslog.LOG_INFO, "tigrisfs")
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to connect to syslog")
-		}
-		logWriter = lf
+		logWriter = InitSyslog()
 	} else if logFileName != "stderr" && logFileName != "/dev/stderr" && logFileName != "" {
 		var err error
 		lf, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)

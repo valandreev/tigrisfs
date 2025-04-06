@@ -16,6 +16,7 @@
 package log
 
 import (
+	"io"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -35,4 +36,8 @@ func redirectStderr(target *os.File) error {
 		os.Stderr = target
 	}
 	return err
+}
+
+func InitSyslog() io.Writer {
+	return logWriter
 }

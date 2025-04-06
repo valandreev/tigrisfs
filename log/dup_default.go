@@ -1,4 +1,4 @@
-//go:build (!linux || !arm64) && !windows
+//go:build !windows
 
 // Copyright 2021 Yandex LLC
 // Copyright 2024 Tigris Data, Inc.
@@ -18,14 +18,24 @@
 package log
 
 import (
+	"golang.org/x/sys/unix"
+	"io"
+	"log/syslog"
 	"os"
-	"syscall"
 )
 
 func redirectStdout(target *os.File) error {
-	return syscall.Dup2(int(target.Fd()), int(os.Stdout.Fd()))
+	return unix.Dup2(int(target.Fd()), int(os.Stdout.Fd()))
 }
 
 func redirectStderr(target *os.File) error {
-	return syscall.Dup2(int(target.Fd()), int(os.Stderr.Fd()))
+	return unix.Dup2(int(target.Fd()), int(os.Stderr.Fd()))
+}
+
+func InitSyslog() io.Writer {
+	lf, err := syslog.New(syslog.LOG_INFO, "tigrisfs")
+	if err != nil {
+		Fatal().Err(err).Msg("Failed to connect to syslog")
+	}
+	return lf
 }

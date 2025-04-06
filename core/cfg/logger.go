@@ -14,8 +14,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-
 package cfg
 
 import (
@@ -52,5 +50,5 @@ func InitLoggers(flags *FlagStorage) {
 
 	log.SetLoggersConfig(log.DefaultLogConfig)
 
-	log.DumpLoggers("InitLoggers")
+	//	log.DumpLoggers("InitLoggers")
 }
