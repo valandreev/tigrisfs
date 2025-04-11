@@ -29,6 +29,7 @@ In the first release we focused on improving security and reliability of the cod
 
 When mounted with the [Tigris](https://www.tigrisdata.com) backend TigrisFS supports:
   * POSIX permissions, special files, symbolic links.
+  * Auto-preload content of small files on directory list in single request.
   * Allows to auto prefetch directory data to the region on list.
 
 # Installation

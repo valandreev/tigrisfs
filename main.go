@@ -114,6 +114,8 @@ func main() {
 
 		cfg.InitLoggers(flags)
 
+		mainLog.Debug().Interface("flags", flags).Msg("config")
+
 		mainLog.Info().Str("version", cfg.Version).Msg("Starting TigrisFS version")
 		mainLog.Info().Str("bucketName", bucketName).Str("mountPoint", flags.MountPoint).Msg("Mounting")
 		mainLog.Info().Uint32("uid", flags.Uid).Uint32("defaultGid", flags.Gid).Msg("Default uid=gid")
