@@ -17,7 +17,7 @@ run-lint:
 	golangci-lint --timeout=5m run --fix
 
 xfstests:
-	git clone --depth=1 https://github.com/kdave/xfstests
+	git clone --branch v2025.03.30 --depth=1 https://github.com/kdave/xfstests
 	cd xfstests && patch -p1 -l < ../test/xfstests.diff
 
 s3proxy.jar:
