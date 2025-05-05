@@ -1,5 +1,5 @@
 VERSION=$(shell git describe --tags --always)
-ENDPOINT ?= "https://fly.storage.tigris.dev"
+ENDPOINT ?= "https://t3.storage.dev"
 
 BUILD_PARAM=-ldflags "-X github.com/tigrisdata/tigrisfs/core/cfg.Version=$(VERSION) -X github.com/tigrisdata/tigrisfs/core/cfg.DefaultEndpoint=$(ENDPOINT)"
 
