@@ -520,9 +520,9 @@ install_macfuse_via_homebrew() {
 # Function to handle macFUSE installation with multiple methods
 ensure_macfuse_installed() {
     # Skip if not on macOS
-#    if [ "$(detect_os)" != "darwin" ]; then
-#        return 0
-#    fi
+    if [ "$(detect_os)" != "darwin" ]; then
+        return 0
+    fi
 
     # Check if already installed
     if check_macfuse_installed; then
@@ -777,14 +777,24 @@ main() {
     # Verify installation
     if command_exists "$BINARY_NAME"; then
         print_success "Installation completed successfully!"
-        print_info "Run '$BINARY_NAME --help' to get started"
 
         # Show version if possible
         if "$BINARY_NAME" --version >/dev/null 2>&1; then
             local version
             version=$("$BINARY_NAME" --version 2>&1| head -n1 | cut -d ' ' -f 3)
-            print_info "Installed version: $version"
+            print_info "Installed version: ${GREEN}$version${NC}"
         fi
+
+        if [ "$package_type" = "tar.gz" ]; then
+          print_info "Run '$BINARY_NAME --help' to get started"
+        else
+          print_info "Configure credentials in:
+              /etc/default/tigrisfs - global
+              /etc/default/tigrisfs-<bucket> - per bucket"
+          print_info "Run 'systemctl --user start tigrisfs@<bucket>' to mount the bucket
+           'systemctl --user stop tigrisfs@<bucket>' to unmount the bucket"
+        fi
+
     else
         if [ "$package_type" = "tar.gz" ]; then
             print_warning "Installation completed, but $BINARY_NAME is not in PATH"
