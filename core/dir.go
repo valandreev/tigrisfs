@@ -716,11 +716,21 @@ func (dh *DirHandle) loadListing() error {
 	//    token
 
 	if useSlurp {
+		// We must release both locks before calling slurpOnce to avoid deadlock
+		// Store current generation before unlocking
+		currentGen := atomic.LoadUint64(&parent.dir.generation)
 		parent.mu.Unlock()
 		dh.mu.Unlock()
 		done, err := parent.slurpOnce(true)
 		dh.mu.Lock()
 		parent.mu.Lock()
+		// Check if generation changed while we were unlocked
+		newGen := atomic.LoadUint64(&parent.dir.generation)
+		if newGen != currentGen {
+			// Directory structure changed, reset our position
+			dh.generation = newGen
+			dh.lastInternalOffset = -1
+		}
 		if err != nil {
 			return err
 		}
@@ -734,12 +744,24 @@ func (dh *DirHandle) loadListing() error {
 
 	loaded, startMarker := false, ""
 	for parent.dir.lastFromCloud == nil && !parent.dir.listDone {
+		// We must release parent.mu before calling listObjectsFlat to avoid deadlock
+		// Store current generation before unlocking
+		currentGen := atomic.LoadUint64(&parent.dir.generation)
 		parent.mu.Unlock()
 		start, err := dh.listObjectsFlat()
 		if !loaded {
 			loaded, startMarker = true, start
 		}
 		parent.mu.Lock()
+		// Check if generation changed while we were unlocked
+		newGen := atomic.LoadUint64(&parent.dir.generation)
+		if newGen != currentGen {
+			// Directory structure changed, reset our position and invalidate startMarker
+			dh.generation = newGen
+			dh.lastInternalOffset = -1
+			// Clear startMarker to prevent removeExpired from operating on stale range
+			startMarker = ""
+		}
 		if err != nil {
 			return err
 		}
