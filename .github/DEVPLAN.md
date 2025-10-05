@@ -87,15 +87,18 @@ Phase C — uploads journal & uploader
 	  * Metrics instrumentation (`Metrics` interface) recording queue/start/retry/complete/fail counters with reason codes, validated in uploader tests.
 
 Phase D — eviction and fail-safe
-8) Implement `Cleaner` test-first
+8) ✅ Implement `Cleaner` test-first
 	- Tests: `cleaner_test.go`
 	  * given total size > cache_size_gb, cleaner evicts chunks by LRU until below threshold
 	  * on ENOSPC event cleaner performs soft-LRU immediately
 	  * on insufficient free space after soft-LRU, cleaner signals fatal condition
-	- API: Cleaner.RunOnce(), Cleaner.RunBackground(ctx)
+	- Implementation: `pkg/cache/cleaner/cleaner.go` providing Config, disk usage abstraction, `RunOnce`, `RunBackground`
+	- Validation: `go test ./pkg/cache/cleaner`
 
-9) Fail-safe monitor
-	- Tests: simulate ENOSPC during writer/upload; verify uploader paused and cleaner triggered, and that a clear error is raised if recovery fails.
+9) ✅ Fail-safe monitor
+	- Tests: `pkg/cache/failsafe/monitor_test.go` simulating ENOSPC events, concurrent recovery rejection, and fatal cleanup paths
+	- Implementation: `pkg/cache/failsafe/monitor.go` pausing uploader, invoking cleaner with ENOSPC trigger, and surfacing recovery failures
+	- Validation: `go test ./pkg/cache/failsafe` and `go test ./pkg/cache/...`
 
 Phase E — integration and mounting
 10) Expose `pkg/cache.CacheManager` as a safe API for main mount code
