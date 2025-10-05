@@ -37,14 +37,14 @@ pkg/cache/
 Step-by-step plan (TDD steps)
 
 Phase A — scaffolding, config, and interfaces
-1) Add config loader
+1) ✅ Add config loader
 	- Tests: `config_test.go`
 	  * missing config → template generated, loader returns specific ErrConfigMissing
 	  * invalid fields → validation errors
 	  * valid config → parsed struct matches defaults
 	- Implement `pkg/cache/config.go`.
 
-2) Define `CacheIndex` interface and types
+2) ✅ Define `CacheIndex` interface and types
 	- Create `pkg/cache/index/index.go` with:
 	  * types: FileMeta {Path, ETag, Size, Chunks []ChunkMeta, MtimeRemote, AtimeLocal}
 	  * ChunkMeta {Offset, Length, DirtyFlag}
@@ -52,7 +52,7 @@ Phase A — scaffolding, config, and interfaces
 	- Tests: `index/interface_test.go` that runs against a mock in-memory index (table-driven) to validate semantics.
 	- Rationale: keep interface tiny and cover required behaviors only.
 
-3) Add bbolt index implementation (minimal)
+3) ✅ Add bbolt index implementation (minimal)
 	- Tests: `index/bbolt/bbolt_test.go` that runs the same `index/interface_test.go` suite against bbolt implementation.
 	- Implementation must provide a migration path via `stats.schema_version`.
 	- Keep implementation internal to `index/bbolt`; use only interface in other packages.
