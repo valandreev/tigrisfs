@@ -58,7 +58,7 @@ Phase A — scaffolding, config, and interfaces
 	- Keep implementation internal to `index/bbolt`; use only interface in other packages.
 
 Phase B — local file storage (sparse files and chunk writes)
-4) Implement `file_store` (sparse file wrapper)
+4) ✅ Implement `file_store` (sparse file wrapper)
 	- Tests: `file_store_test.go`
 	  * create new file container, write at offset, read back
 	  * partial writes and reads, boundaries
