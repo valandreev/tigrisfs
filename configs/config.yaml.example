@@ -1,0 +1,13 @@
+version: 1
+cache_dir: ""                  # if empty — ~/.tigrisfs/cache/<diskID>
+cache_size_gb: 10
+chunk_mb: 8                    # SATA=8, NVMe = 16
+clean_interval_min: 30
+upload:
+  connect_timeout_sec: 10
+  retry_interval_sec: 15
+  max_retry_sec: 300
+  max_concurrent_uploads: 4
+fail_safe:
+  enable: true
+  disk_min_free_percent: 10
