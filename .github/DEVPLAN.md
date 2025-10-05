@@ -66,21 +66,25 @@ Phase B — local file storage (sparse files and chunk writes)
 	- API: OpenContainer(path) -> Container; Container.WriteAt([]byte, offset), ReadAt(...), Truncate(0), Fsync(), Close()
 	- Note: on Windows/macOS ensure sparse behaviour is abstracted (use fallbacks if sparse unsupported). Tests should run with in-memory temporary files.
 
-5) Integration test: create one FileMeta, write ranges via file_store, persist meta to index, read them back (integration_unit_01).
+5) ✅ Integration test: create one FileMeta, write ranges via file_store, persist meta to index, read them back (integration_unit_01).
+	- Tests: `pkg/cache/integration_test.go` verifies file_store + bbolt index end-to-end round trip.
 
 Phase C — uploads journal & uploader
-6) Uploads journal in the index
+6) ✅ Uploads journal in the index
 	- Add uploadEntry type to index: {id, path, offset, len, status, attempts, lastError}
-	- Tests: index can add/list/update uploads; persisted across index reopen (bbolt).
+	- Tests: `pkg/cache/index/indextest/contract.go` uploads lifecycle plus `pkg/cache/index/bbolt/bbolt_test.go::TestUploadsPersistAcrossReopen` for persistence across reopen.
 
-7) Implement `Uploader` with pluggable backend client (use existing storage backend API)
-	- Tests: `uploader_test.go` using a fake storage backend that simulates success/fail/ETag-change.
+7) ✅ Implement `Uploader` with pluggable backend client (use existing storage backend API)
+	- Tests: `pkg/cache/uploader/uploader_test.go` using a fake storage backend that simulates success/fail/ETag-change plus concurrency/backoff cases; `pkg/cache/uploader/chunk_provider_test.go` covers local chunk reader semantics.
 	- Behavior to test:
 	  * picks queued uploads and sets status -> in-progress -> success
 	  * retries with exponential backoff on transient errors
 	  * respects `max_concurrent_uploads`
 	  * on restart resumes queued entries
 	  * if ETag mismatch detected, uploader marks entry invalid and emits analytic/log
+	- Follow-ups completed:
+	  * Chunk streaming via pluggable `ChunkProvider` (default `LocalFileChunkProvider`) feeding backend uploads with `ReadSeekCloser` streams.
+	  * Metrics instrumentation (`Metrics` interface) recording queue/start/retry/complete/fail counters with reason codes, validated in uploader tests.
 
 Phase D — eviction and fail-safe
 8) Implement `Cleaner` test-first

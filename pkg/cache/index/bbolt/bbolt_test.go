@@ -1,6 +1,7 @@
 package bbolt
 
 import (
+	"context"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -64,6 +65,92 @@ func TestOpenUpgradesLegacySchema(t *testing.T) {
 	version := readSchemaVersion(t, path)
 	if version != currentSchemaVersion {
 		t.Fatalf("expected schema version %d after upgrade, got %d", currentSchemaVersion, version)
+	}
+}
+
+func TestUploadsPersistAcrossReopen(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "index.db")
+
+	idx, err := Open(path, Options{})
+	if err != nil {
+		t.Fatalf("first Open returned error: %v", err)
+	}
+
+	upload := index.UploadRecord{
+		Path:   "/objects/video.mp4",
+		Offset: 1024,
+		Length: 2048,
+		Status: index.UploadStatusQueued,
+	}
+	created, err := idx.AddUpload(ctx, upload)
+	if err != nil {
+		t.Fatalf("AddUpload failed: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatalf("expected AddUpload to assign ID")
+	}
+	progressed, err := idx.UpdateUploadStatus(ctx, created.ID, index.UploadStatusInProgress, "")
+	if err != nil {
+		t.Fatalf("UpdateUploadStatus failed: %v", err)
+	}
+	if progressed.Attempts != 1 {
+		t.Fatalf("expected attempts to be 1 after first update, got %d", progressed.Attempts)
+	}
+	if !progressed.CreatedAt.Equal(created.CreatedAt) {
+		t.Fatalf("expected CreatedAt to remain stable across updates")
+	}
+
+	if err := idx.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+
+	idx, err = Open(path, Options{})
+	if err != nil {
+		t.Fatalf("re-open returned error: %v", err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	uploads, err := idx.ListUploads(ctx)
+	if err != nil {
+		t.Fatalf("ListUploads failed: %v", err)
+	}
+	if len(uploads) != 1 {
+		t.Fatalf("expected 1 upload after reopen, got %d", len(uploads))
+	}
+	persisted := uploads[0]
+	if persisted.ID != created.ID {
+		t.Fatalf("expected persisted ID %s, got %s", created.ID, persisted.ID)
+	}
+	if persisted.Status != index.UploadStatusInProgress {
+		t.Fatalf("expected status %s after reopen, got %s", index.UploadStatusInProgress, persisted.Status)
+	}
+	if !persisted.CreatedAt.Equal(created.CreatedAt) {
+		t.Fatalf("expected CreatedAt to persist across reopen")
+	}
+	if persisted.Attempts != progressed.Attempts {
+		t.Fatalf("expected attempts %d after reopen, got %d", progressed.Attempts, persisted.Attempts)
+	}
+	if persisted.UpdatedAt.IsZero() {
+		t.Fatalf("expected UpdatedAt to be set on persisted record")
+	}
+
+	completed, err := idx.UpdateUploadStatus(ctx, created.ID, index.UploadStatusComplete, "")
+	if err != nil {
+		t.Fatalf("UpdateUploadStatus after reopen failed: %v", err)
+	}
+	if completed.Status != index.UploadStatusComplete {
+		t.Fatalf("expected status complete, got %s", completed.Status)
+	}
+	if completed.Attempts != progressed.Attempts+1 {
+		t.Fatalf("expected attempts to increment to %d, got %d", progressed.Attempts+1, completed.Attempts)
+	}
+	if !completed.CreatedAt.Equal(created.CreatedAt) {
+		t.Fatalf("expected CreatedAt unchanged after second update")
+	}
+	if !completed.UpdatedAt.After(persisted.UpdatedAt) {
+		t.Fatalf("expected UpdatedAt to advance after status change")
 	}
 }
 
