@@ -29,14 +29,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/log"
 
 	"github.com/rs/zerolog"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/google/uuid"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 )
 
 const (

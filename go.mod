@@ -1,4 +1,4 @@
-module github.com/tigrisdata/tigrisfs
+module github.com/valandreev/tigrisfs
 
 go 1.24
 

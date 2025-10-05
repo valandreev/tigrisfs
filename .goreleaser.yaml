@@ -13,8 +13,8 @@ builds:
     binary: tigrisfs
     ldflags:
       - -w -extldflags '-static'
-      - -X 'github.com/tigrisdata/tigrisfs/core/cfg.Version={{.Version}}'
-      - -X 'github.com/tigrisdata/tigrisfs/core/cfg.DefaultEndpoint={{.Env.ENDPOINT}}'
+      - -X 'github.com/valandreev/tigrisfs/core/cfg.Version={{.Version}}'
+      - -X 'github.com/valandreev/tigrisfs/core/cfg.DefaultEndpoint={{.Env.ENDPOINT}}'
 
 archives:
   - format_overrides:

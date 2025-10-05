@@ -36,8 +36,8 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/log"
 )
 
 type ADLv2 struct {

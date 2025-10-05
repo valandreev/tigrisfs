@@ -19,10 +19,10 @@ package core
 import (
 	"context"
 
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/log"
 
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/core/pb"
+	"github.com/valandreev/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/pb"
 )
 
 var recLog = log.GetLogger("rec")

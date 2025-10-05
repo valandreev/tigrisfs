@@ -21,8 +21,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/log"
 	. "gopkg.in/check.v1"
 )
 

@@ -30,7 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/log"
 )
 
 type S3Config struct {

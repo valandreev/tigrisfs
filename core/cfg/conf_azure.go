@@ -33,7 +33,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/Azure/go-autorest/autorest/azure/cli"
 	"github.com/mitchellh/go-homedir"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/log"
 	ini "gopkg.in/ini.v1"
 )
 

@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

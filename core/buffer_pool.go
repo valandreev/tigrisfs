@@ -24,7 +24,7 @@ import (
 	"syscall"
 
 	"github.com/shirou/gopsutil/mem"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/log"
 )
 
 var bufferLog = log.GetLogger("buffer")

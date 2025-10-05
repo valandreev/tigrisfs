@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tigrisdata/tigrisfs/pkg/cache"
+	"github.com/valandreev/tigrisfs/pkg/cache"
 )
 
 func TestLoadConfigCreatesTemplateWhenMissing(t *testing.T) {

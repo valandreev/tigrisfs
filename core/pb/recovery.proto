@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-option go_package = "github.com/tigrisdata/tigrisfs/core/pb";
+option go_package = "github.com/valandreev/tigrisfs/core/pb";
 
 service Recovery {
     rpc Unmount(UnmountRequest) returns (UnmountResponse);

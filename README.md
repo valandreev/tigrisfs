@@ -1,6 +1,6 @@
-[![unittests](https://github.com/tigrisdata/tigrisfs/actions/workflows/test.yaml/badge.svg)]()
-[![xfstests](https://github.com/tigrisdata/tigrisfs/actions/workflows/xfstests.yaml/badge.svg)]()
-[![cluster-test](https://github.com/tigrisdata/tigrisfs/actions/workflows/cluster_test.yaml/badge.svg)]()
+[![unittests](https://github.com/valandreev/tigrisfs/actions/workflows/test.yaml/badge.svg)]()
+[![xfstests](https://github.com/valandreev/tigrisfs/actions/workflows/xfstests.yaml/badge.svg)]()
+[![cluster-test](https://github.com/valandreev/tigrisfs/actions/workflows/cluster_test.yaml/badge.svg)]()
 
 
 TigrisFS is a high-performance FUSE-based file system for S3-compatible object storage written in Go.
@@ -37,12 +37,12 @@ When mounted with the [Tigris](https://www.tigrisdata.com) backend TigrisFS supp
 ## Recommended: One-line install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/tigrisdata/tigrisfs/refs/heads/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/valandreev/tigrisfs/refs/heads/main/install.sh | bash
 ```
 
 ## Prebuilt DEB and RPM packages 
 
-* Download the latest release: [DEB](https://github.com/tigrisdata/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_linux_amd64.deb), [RPM](https://github.com/tigrisdata/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_linux_amd64.rpm).
+* Download the latest release: [DEB](https://github.com/valandreev/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_linux_amd64.deb), [RPM](https://github.com/valandreev/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_linux_amd64.rpm).
 * Install the package:
   * Debian-based systems:
     ```bash
@@ -77,7 +77,7 @@ See [docs](https://www.tigrisdata.com/docs/sdks/s3/aws-cli/) for more details.
 * Download and unpack the latest release:
   * MacOS ARM64
     ```
-      curl -L https://github.com/tigrisdata/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_darwin_arm64.tar.gz | sudo tar -xz -C /usr/local/bin
+      curl -L https://github.com/valandreev/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_darwin_arm64.tar.gz | sudo tar -xz -C /usr/local/bin
     ```
 * Configuration is the same as for the DEB and RPM packages above.
 * Mount the bucket:

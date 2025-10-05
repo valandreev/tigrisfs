@@ -16,7 +16,7 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/tigrisdata/tigrisfs/core/pb";
+option go_package = "github.com/valandreev/tigrisfs/core/pb";
 
 service FsGrpc {
   // stealing

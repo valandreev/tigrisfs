@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/tigrisdata/tigrisfs/core/pb"
+	"github.com/valandreev/tigrisfs/core/pb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

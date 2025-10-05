@@ -23,7 +23,7 @@ import (
 	"syscall"
 
 	"cloud.google.com/go/storage"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 	"google.golang.org/api/iterator"
 )
 

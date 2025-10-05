@@ -32,8 +32,8 @@ import (
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/pkg/xattr"
-	bench_embed "github.com/tigrisdata/tigrisfs/bench"
-	test_embed "github.com/tigrisdata/tigrisfs/test"
+	bench_embed "github.com/valandreev/tigrisfs/bench"
+	test_embed "github.com/valandreev/tigrisfs/test"
 	"golang.org/x/sys/unix"
 	. "gopkg.in/check.v1"
 )

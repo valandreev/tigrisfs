@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tigrisdata/tigrisfs/pkg/cache/index"
+	"github.com/valandreev/tigrisfs/pkg/cache/index"
 )
 
 type CacheIndexFactory func(tb testing.TB) index.CacheIndex

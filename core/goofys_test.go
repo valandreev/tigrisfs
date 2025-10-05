@@ -28,7 +28,7 @@ USAGE:
 [ EMULATOR=1 ] \
 [ EVENTUAL_CONSISTENCY=1 ] \
 CLOUD=s3|gcs|azblob|adlv1|adlv2 \
-    go test -v github.com/tigrisdata/tigrisfs/core \
+	go test -v github.com/valandreev/tigrisfs/core \
     [ -check.f TestName ]
 
 NOTES:
@@ -61,7 +61,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 	. "gopkg.in/check.v1"
 )
 

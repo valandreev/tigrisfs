@@ -36,7 +36,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/log"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest"
@@ -45,7 +45,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 	. "gopkg.in/check.v1"
 )
 

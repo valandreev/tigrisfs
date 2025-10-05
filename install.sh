@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="tigrisdata/tigrisfs"
+REPO="valandreev/tigrisfs"
 INSTALL_DIR="${INSTALL_DIR:-/usr/bin}"
 BINARY_NAME="tigrisfs"
 

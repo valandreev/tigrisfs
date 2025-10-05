@@ -20,8 +20,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/tigrisdata/tigrisfs/core"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core"
+	"github.com/valandreev/tigrisfs/core/cfg"
 )
 
 var signalsToHandle = []os.Signal{os.Interrupt, syscall.SIGTERM}

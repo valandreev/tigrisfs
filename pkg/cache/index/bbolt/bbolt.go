@@ -13,7 +13,7 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/tigrisdata/tigrisfs/pkg/cache/index"
+	"github.com/valandreev/tigrisfs/pkg/cache/index"
 )
 
 const (

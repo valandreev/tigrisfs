@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/log"
+	"github.com/valandreev/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/log"
 
 	adl "github.com/Azure/azure-sdk-for-go/services/datalake/store/2016-11-01/filesystem"
 	"github.com/Azure/go-autorest/autorest"

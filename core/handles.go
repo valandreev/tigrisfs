@@ -33,7 +33,7 @@ import (
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/rs/zerolog"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 )
 
 const (

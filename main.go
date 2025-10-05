@@ -25,11 +25,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tigrisdata/tigrisfs/core"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
-	"github.com/tigrisdata/tigrisfs/lib"
-	"github.com/tigrisdata/tigrisfs/log"
 	"github.com/urfave/cli"
+	"github.com/valandreev/tigrisfs/core"
+	"github.com/valandreev/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/lib"
+	"github.com/valandreev/tigrisfs/log"
 
 	_ "net/http/pprof"
 )

@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 	. "gopkg.in/check.v1"
 )
 

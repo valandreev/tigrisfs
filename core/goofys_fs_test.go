@@ -33,7 +33,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 )
 
 func (s *GoofysTest) mount(t *C, mountPoint string) {

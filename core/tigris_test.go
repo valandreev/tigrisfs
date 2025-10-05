@@ -26,7 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	s4 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/stretchr/testify/require"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 )
 
 var (

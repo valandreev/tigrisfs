@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/tigrisdata/tigrisfs/core/cfg"
+	"github.com/valandreev/tigrisfs/core/cfg"
 )
 
 type SlurpGap struct {
@@ -404,10 +404,10 @@ func (inode *Inode) sealDir() {
 	} else {
 		inode.Attributes.Mtime, inode.Attributes.Ctime = inode.findChildMaxTime()
 	}
-	
+
 	// Increment generation to signal all handles need revalidation
 	atomic.AddUint64(&inode.dir.generation, 1)
-	
+
 	inode.removeExpired("")
 }
 
@@ -660,7 +660,7 @@ func (dh *DirHandle) checkDirPosition() {
 		dh.lastInternalOffset = -1
 		dh.generation = currentGen
 	}
-	
+
 	if dh.lastInternalOffset < 0 {
 		parent := dh.inode
 		// Directory position invalidated, try to find it again using lastName
@@ -1047,10 +1047,10 @@ func (parent *Inode) removeChildUnlocked(inode *Inode) {
 	if l == 0 {
 		return
 	}
-	
+
 	// Increment generation to invalidate all directory handles
 	atomic.AddUint64(&parent.dir.generation, 1)
-	
+
 	i := sort.Search(l, parent.findInodeFunc(inode.Name))
 	if i >= l || parent.dir.Children[i].Name != inode.Name {
 		panic(fmt.Sprintf("%v.removeName(%v) but child not found: %v",
@@ -2025,7 +2025,7 @@ func (parent *Inode) recheckInodeByName(name string) (newInode *Inode, err error
 	parent.mu.Lock()
 	currentChild := parent.findChildUnlocked(name)
 	parent.mu.Unlock()
-	
+
 	newInode, err = parent.LookUp(name, currentChild == nil && !parent.fs.flags.NoPreloadDir)
 	if err != nil {
 		if currentChild != nil {

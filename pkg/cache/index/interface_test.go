@@ -3,7 +3,7 @@ package index_test
 import (
 	"testing"
 
-	"github.com/tigrisdata/tigrisfs/pkg/cache/index/indextest"
+	"github.com/valandreev/tigrisfs/pkg/cache/index/indextest"
 )
 
 func TestCacheIndexContractWithMemoryIndex(t *testing.T) {

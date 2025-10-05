@@ -8,8 +8,8 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
-	"github.com/tigrisdata/tigrisfs/pkg/cache/index"
-	"github.com/tigrisdata/tigrisfs/pkg/cache/index/indextest"
+	"github.com/valandreev/tigrisfs/pkg/cache/index"
+	"github.com/valandreev/tigrisfs/pkg/cache/index/indextest"
 )
 
 func TestCacheIndexContractWithBbolt(t *testing.T) {

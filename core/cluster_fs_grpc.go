@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
-	"github.com/tigrisdata/tigrisfs/core/pb"
+	"github.com/valandreev/tigrisfs/core/pb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
