@@ -2,11 +2,16 @@ Implementation plan (TDD-first) — feature/persistent-cache
 
 Goal: implement a modular, test-driven persistent write-back cache for TigrisFS under `pkg/cache`.
 
-High-level rules:
+- High-level rules:
 - Tests first: for every new public behavior, write unit tests (and where appropriate integration tests) before changing production code.
 - Small steps: each commit implements a single, test-covered capability (A: tests → B: minimal implementation → C: refactor → D: commit).
 - English-only public comments and tests.
 - Pluggable CacheIndex: design a small interface so swapping bbolt to another store (e.g. badger) requires minimal effort.
+ 
+Confirmed decisions (from product & dev):
+- Default cache directory: `~/.tigrisfs/cache/<diskID>` (confirmed).
+- Uploads journal location: store upload entries in the same `index.db` under `uploads` bucket to keep atomicity (confirmed).
+- Windows sparse files: implement Windows fallback behavior (attempt sparse support; if unavailable, use regular file with telemetry). Development and tests should assume Windows as initial platform (see note below).
 
 Top-level layout (files/dirs to add)
 
@@ -132,5 +137,22 @@ Questions (before coding)
 1. Preferred location for on-disk cache directory by default — use `~/.tigrisfs/cache/<diskID>` (PRD) — confirm.
 2. Should uploads journal be a separate bbolt bucket or a separate DB file `uploads.db`? PRD shows both; recommendation: store uploads in the same `index.db` under `uploads` bucket to keep atomicity.
 3. For Windows sparse file support — do we accept a fallback (regular file) or prefer a Windows-specific sparse API? I recommend fallback + telemetry.
+
+-- Answers provided by product/developer:
+1. Default cache dir: confirmed `~/.tigrisfs/cache/<diskID>`.
+2. Uploads journal: confirmed store under `index.db` in `uploads` bucket.
+3. Windows sparse: accept fallback to regular files if sparse API is unavailable; attempt to use native sparse APIs first.
+
+Development and testing platform note
+- Initial development and test harnessing will be performed on Windows. All code must remain cross-platform, but early tests (unit and integration) will target Windows APIs and path behavior. When possible tests should also run on Linux in CI.
+
+Test bucket note (works locally)
+- The following test command and profile are verified to work for local testing against the test bucket endpoint:
+
+```powershell
+.\tigrisfs.exe --profile datasilo --memory-limit 1024 --endpoint http://192.168.1.20:9000 test H:
+```
+
+Use it for manual integration tests while developing uploader/reads/writes.
 
 Now I will replace the existing `DEVPLAN.md` with this plan. After that I can create initial test scaffolding if you want.

@@ -5,3 +5,4 @@ xout
 s3proxy.jar
 .copilot
 .copilot/**
+*.exe
