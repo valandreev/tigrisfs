@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -390,6 +391,13 @@ func newGoofys(_ context.Context, bucket string, flags *cfg.FlagStorage,
 	}
 
 	if fs.flags.CachePath != "" {
+		endpoint := fs.flags.Endpoint
+		if endpoint == "" {
+			endpoint = "s3.amazonaws.com"
+		}
+		shortenedEndpoint := getShortenedEndpoint(endpoint)
+		fs.flags.CachePath = filepath.Join(fs.flags.CachePath, fmt.Sprintf("%s-%s", shortenedEndpoint, fs.bucket))
+
 		fs.diskFdQueue = NewFDQueue(int(fs.flags.MaxDiskCacheFD))
 		if fs.flags.MaxDiskCacheFD > 0 {
 			go fs.FDCloser()
@@ -412,6 +420,26 @@ func (fs *Goofys) Shutdown() {
 	if fs.diskFdQueue != nil {
 		fs.diskFdQueue.cond.Broadcast()
 	}
+}
+
+func getShortenedEndpoint(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		// If it's not a full URL, it might be just a hostname
+		host := endpoint
+		if strings.Contains(host, "://") {
+			parts := strings.Split(host, "://")
+			host = parts[len(parts)-1]
+		}
+		host = strings.Split(host, "/")[0]
+		return sanitizeHost(host)
+	}
+	return sanitizeHost(u.Host)
+}
+
+func sanitizeHost(host string) string {
+	host = strings.ReplaceAll(host, ":", "-")
+	return host
 }
 
 // from https://stackoverflow.com/questions/22892120/how-to-generate-a-random-string-of-a-fixed-length-in-golang
@@ -589,7 +617,7 @@ func (fs *Goofys) tryEvictToDisk(inode *Inode, buf *FileBuffer, toFs *int) {
 				if err != nil {
 					*toFs = 0
 					mainLog.Errorf("Couldn't write %v bytes at offset %v to %v: %v",
-						len(buf.data), buf.offset, fs.flags.CachePath+"/"+inode.FullName(), err)
+						len(buf.data), buf.offset, filepath.Join(fs.flags.CachePath, "data", filepath.FromSlash(inode.FullName())), err)
 				} else {
 					buf.onDisk = true
 				}

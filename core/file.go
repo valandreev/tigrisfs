@@ -206,7 +206,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 func (inode *Inode) OpenCacheFD() error {
 	fs := inode.fs
 	if inode.DiskCacheFD == nil {
-		cacheFileName := filepath.Join(fs.flags.CachePath, filepath.FromSlash(inode.FullName()))
+		cacheFileName := filepath.Join(fs.flags.CachePath, "data", filepath.FromSlash(inode.FullName()))
 		var err error
 		err = os.MkdirAll(filepath.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0o777)>>2))
 		if err != nil {
