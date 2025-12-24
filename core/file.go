@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -206,10 +206,12 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 func (inode *Inode) OpenCacheFD() error {
 	fs := inode.fs
 	if inode.DiskCacheFD == nil {
-		cacheFileName := fs.flags.CachePath + "/" + inode.FullName()
+		cacheFileName := filepath.Join(fs.flags.CachePath, filepath.FromSlash(inode.FullName()))
 		var err error
-		err = os.MkdirAll(path.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0o777)>>2))
-		fuseLog.Errorf("Couldn't mkdir %v: %v", cacheFileName, err)
+		err = os.MkdirAll(filepath.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0o777)>>2))
+		if err != nil {
+			fuseLog.Errorf("Couldn't mkdir %v: %v", cacheFileName, err)
+		}
 		inode.DiskCacheFD, err = os.OpenFile(cacheFileName, os.O_RDWR|os.O_CREATE, fs.flags.CacheFileMode)
 		if err != nil {
 			fuseLog.Errorf("Couldn't open %v: %v", cacheFileName, err)
@@ -1421,10 +1423,12 @@ func (inode *Inode) resetCache() {
 	}
 	// Also remove the cache file from disk, if present
 	if inode.OnDisk {
-		cacheFileName := inode.fs.flags.CachePath + "/" + inode.FullName()
+		cacheFileName := filepath.Join(inode.fs.flags.CachePath, filepath.FromSlash(inode.FullName()))
 		if inode.DiskCacheFD != nil {
 			err := inode.DiskCacheFD.Close()
-			fuseLog.Errorf("resetCache: close error %v: %v", cacheFileName, err)
+			if err != nil {
+				fuseLog.Errorf("resetCache: close error %v: %v", cacheFileName, err)
+			}
 			inode.DiskCacheFD = nil
 			inode.fs.diskFdQueue.DeleteFD(inode)
 		}
