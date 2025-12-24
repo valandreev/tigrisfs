@@ -46,9 +46,9 @@ func (s *BufferListTest) TestAppend(t *C) {
 	l := BufferList{
 		helpers: &TestBLHelpers{},
 	}
-	t.Assert(l.Add(0, filledBuf(1024, 1), BUF_DIRTY, true), Equals, int64(1024))
-	t.Assert(l.Add(1024, filledBuf(1024, 2), BUF_DIRTY, true), Equals, int64(1024))
-	t.Assert(l.Add(1536, filledBuf(1024, 3), BUF_DIRTY, true), Equals, int64(1024))
+	t.Assert(l.Add(0, filledBuf(1024, 1), BUF_DIRTY, true, false), Equals, int64(1024))
+	t.Assert(l.Add(1024, filledBuf(1024, 2), BUF_DIRTY, true, false), Equals, int64(1024))
+	t.Assert(l.Add(1536, filledBuf(1024, 3), BUF_DIRTY, true, false), Equals, int64(1024))
 	data, ids, err := l.GetData(0, 2048, true)
 	t.Assert(err, IsNil)
 	t.Assert(len(ids), Equals, 1)
@@ -62,7 +62,7 @@ func (s *BufferListTest) TestAppend(t *C) {
 	t.Assert(data[0][1024:1536], DeepEquals, filledBuf(512, 2))
 	t.Assert(data[0][1536:], DeepEquals, filledBuf(512, 3))
 	// Then modify one of the buffers again and recheck that dirty ID is reassigned
-	t.Assert(l.Add(1536, filledBuf(1024, 4), BUF_DIRTY, true), Equals, int64(0))
+	t.Assert(l.Add(1536, filledBuf(1024, 4), BUF_DIRTY, true, false), Equals, int64(0))
 	l.SetState(0, 2048, ids, BUF_CLEAN)
 	data, ids, err = l.GetData(0, 2048, true)
 	t.Assert(len(ids), Equals, 1)
@@ -81,8 +81,8 @@ func (s *BufferListTest) TestGetHolesEmpty(t *C) {
 	l := BufferList{
 		helpers: &TestBLHelpers{},
 	}
-	t.Assert(l.Add(0, make([]byte, 1024), BUF_DIRTY, false), Equals, int64(1024))
-	t.Assert(l.Add(1024, make([]byte, 1024), BUF_DIRTY, false), Equals, int64(1024))
+	t.Assert(l.Add(0, make([]byte, 1024), BUF_DIRTY, false, false), Equals, int64(1024))
+	t.Assert(l.Add(1024, make([]byte, 1024), BUF_DIRTY, false, false), Equals, int64(1024))
 	data, ids, err := l.GetData(0, 2048, true)
 	t.Assert(err, IsNil)
 	t.Assert(len(data), Equals, 2)
@@ -102,10 +102,10 @@ func (s *BufferListTest) TestGetHolesEvicted(t *C) {
 	l := BufferList{
 		helpers: &TestBLHelpers{},
 	}
-	t.Assert(l.Add(0, make([]byte, 5*1024), BUF_DIRTY, false), Equals, int64(5*1024))
-	t.Assert(l.Add(5*1024, make([]byte, 3*1024), BUF_DIRTY, false), Equals, int64(3*1024))
-	t.Assert(l.Add(10*1024, make([]byte, 5*1024), BUF_DIRTY, false), Equals, int64(5*1024))
-	t.Assert(l.Add(15*1024, make([]byte, 5*1024), BUF_DIRTY, false), Equals, int64(5*1024))
+	t.Assert(l.Add(0, make([]byte, 5*1024), BUF_DIRTY, false, false), Equals, int64(5*1024))
+	t.Assert(l.Add(5*1024, make([]byte, 3*1024), BUF_DIRTY, false, false), Equals, int64(3*1024))
+	t.Assert(l.Add(10*1024, make([]byte, 5*1024), BUF_DIRTY, false, false), Equals, int64(5*1024))
+	t.Assert(l.Add(15*1024, make([]byte, 5*1024), BUF_DIRTY, false, false), Equals, int64(5*1024))
 	// Mark second buffer as flushed
 	data, ids, err := l.GetData(10*1024, 5*1024, true)
 	t.Assert(err, IsNil)
@@ -146,10 +146,10 @@ func (s *BufferListTest) TestSplitDirtyQueue(t *C) {
 	t.Assert(zeroed, Equals, true)
 	t.Assert(allocated, Equals, int64(0))
 	// 6*1024 and 12*1024 isn't part boundary, refcnts should be: 3 2 2 1 1 ... 1
-	t.Assert(l.Add(0*1024, make([]byte, 1*1024), BUF_DIRTY, false), Equals, int64(1*1024))
-	t.Assert(l.Add(1*1024, make([]byte, 2*1024), BUF_DIRTY, false), Equals, int64(2*1024))
-	t.Assert(l.Add(3*1024, make([]byte, 3*1024), BUF_DIRTY, false), Equals, int64(3*1024))
-	t.Assert(l.Add(6*1024, make([]byte, 6*1024), BUF_DIRTY, false), Equals, int64(6*1024))
+	t.Assert(l.Add(0*1024, make([]byte, 1*1024), BUF_DIRTY, false, false), Equals, int64(1*1024))
+	t.Assert(l.Add(1*1024, make([]byte, 2*1024), BUF_DIRTY, false, false), Equals, int64(2*1024))
+	t.Assert(l.Add(3*1024, make([]byte, 3*1024), BUF_DIRTY, false, false), Equals, int64(3*1024))
+	t.Assert(l.Add(6*1024, make([]byte, 6*1024), BUF_DIRTY, false, false), Equals, int64(6*1024))
 	data, ids, err := l.GetData(12*1024, (100-12)*1024, true)
 	t.Assert(err, IsNil)
 	t.Assert(len(data), Equals, 1)
@@ -183,11 +183,11 @@ func (s *BufferListTest) TestFill(t *C) {
 	l := BufferList{
 		helpers: &TestBLHelpers{},
 	}
-	t.Assert(l.Add(1, filledBuf(1, 1), BUF_DIRTY, true), Equals, int64(1))
+	t.Assert(l.Add(1, filledBuf(1, 1), BUF_DIRTY, true, false), Equals, int64(1))
 	l.AddLoading(0, 4)
 	_, _, err := l.GetData(0, 4, true)
 	t.Assert(err, Equals, ErrBufferIsLoading)
-	t.Assert(l.Add(0, filledBuf(4, 2), BUF_CLEAN, true), Equals, int64(3))
+	t.Assert(l.Add(0, filledBuf(4, 2), BUF_CLEAN, true, false), Equals, int64(3))
 	data, ids, err := l.GetData(0, 4, true)
 	t.Assert(err, IsNil)
 	t.Assert(len(data), Equals, 3)
@@ -203,12 +203,12 @@ func (s *BufferListTest) TestCutZero(t *C) {
 	l := BufferList{
 		helpers: &TestBLHelpers{},
 	}
-	t.Assert(l.Add(0, filledBuf(100, 1), BUF_DIRTY, true), Equals, int64(100))
+	t.Assert(l.Add(0, filledBuf(100, 1), BUF_DIRTY, true, false), Equals, int64(100))
 	z, a := l.ZeroRange(100, 1000)
 	t.Assert(z, Equals, true)
 	t.Assert(a, Equals, int64(0))
-	t.Assert(l.Add(1100, filledBuf(100, 2), BUF_DIRTY, true), Equals, int64(100))
-	t.Assert(l.Add(500, filledBuf(100, 3), BUF_DIRTY, true), Equals, int64(100))
+	t.Assert(l.Add(1100, filledBuf(100, 2), BUF_DIRTY, true, false), Equals, int64(100))
+	t.Assert(l.Add(500, filledBuf(100, 3), BUF_DIRTY, true, false), Equals, int64(100))
 	data, ids, err := l.GetData(0, 1200, true)
 	t.Assert(err, IsNil)
 	t.Assert(len(data), Equals, 5)

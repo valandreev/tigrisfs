@@ -176,7 +176,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 		fh.inode.ResizeUnlocked(end, false)
 	}
 
-	allocated := fh.inode.buffers.Add(uint64(offset), data, BUF_DIRTY, copyData)
+	allocated := fh.inode.buffers.Add(uint64(offset), data, BUF_DIRTY, copyData, false)
 	atomic.StoreUint64(&fh.inode.fs.hasNewWrites, 1)
 
 	fh.inode.lastWriteEnd = end
@@ -419,7 +419,19 @@ func (inode *Inode) sendRead(cloud StorageBackend, key string, offset, size uint
 			// Cache xattrs
 			inode.fillXattrFromHead(&(*resp).HeadBlobOutput)
 		}
-		allocated += inode.buffers.Add(offset, buf, BUF_CLEAN, false)
+		onDisk := false
+		if inode.fs.flags.CachePath != "" {
+			errCache := inode.OpenCacheFD()
+			if errCache == nil {
+				_, errCache = inode.DiskCacheFD.WriteAt(buf, int64(offset))
+				if errCache == nil {
+					onDisk = true
+				} else {
+					fuseLog.Warnf("Failed to write to cache: %v", errCache)
+				}
+			}
+		}
+		allocated += inode.buffers.Add(offset, buf, BUF_CLEAN, false, onDisk)
 		inode.mu.Unlock()
 		size -= done
 		offset += done

@@ -422,7 +422,7 @@ func (l *BufferList) RemoveRange(removeOffset, removeSize uint64, filter func(b 
 	return
 }
 
-func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferState, copyData bool, dataPtr *BufferPointer) (allocated int64) {
+func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferState, copyData bool, dataPtr *BufferPointer, onDisk bool) (allocated int64) {
 	if len(data) == 0 {
 		return 0
 	}
@@ -448,6 +448,7 @@ func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferStat
 		l.helpers.PartNum(prev.offset) == l.helpers.PartNum(offset) &&
 		prev.state == state &&
 		prev.ptr != nil && prev.ptr.refs == 1 &&
+		prev.onDisk == onDisk &&
 		(len(prev.data)+len(data) <= cap(prev.data) || cap(prev.data) <= MAX_BUF/2) {
 		// We can append to the previous buffer if it doesn't result
 		// in overwriting data that may be referenced by other buffers
@@ -455,7 +456,7 @@ func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferStat
 		l.unqueue(prev)
 		l.at.Delete(prev.offset + prev.length)
 		allocated += prev.Append(data)
-		prev.onDisk = false
+		prev.onDisk = onDisk
 		prev.dirtyID = dirtyID
 		l.at.Set(prev.offset+prev.length, prev)
 		l.queue(prev)
@@ -478,7 +479,7 @@ func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferStat
 		offset:  offset,
 		dirtyID: dirtyID,
 		state:   state,
-		onDisk:  false,
+		onDisk:  onDisk,
 		zero:    false,
 		length:  uint64(len(newData)),
 		data:    newData,
@@ -525,7 +526,7 @@ func (l *BufferList) ZeroRange(offset, size uint64) (zeroed bool, allocated int6
 	return
 }
 
-func (l *BufferList) Add(offset uint64, data []byte, state BufferState, copyData bool) (allocated int64) {
+func (l *BufferList) Add(offset uint64, data []byte, state BufferState, copyData bool, onDisk bool) (allocated int64) {
 	dataLen := uint64(len(data))
 
 	// Remove intersecting parts as they're being overwritten
@@ -538,7 +539,7 @@ func (l *BufferList) Add(offset uint64, data []byte, state BufferState, copyData
 		refs: 0,
 	}
 	l.fill(offset, dataLen, func(curOffset, curEnd uint64) {
-		allocated += l.insertOrAppend(curOffset, data[curOffset-offset:curEnd-offset], state, copyData, dataPtr)
+		allocated += l.insertOrAppend(curOffset, data[curOffset-offset:curEnd-offset], state, copyData, dataPtr, onDisk)
 	})
 
 	return

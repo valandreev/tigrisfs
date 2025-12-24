@@ -228,7 +228,7 @@ func (inode *Inode) SetFromBlobItem(item *BlobItemOutput) {
 			inode.userMetadataDirty = 0
 		}
 		if item.Content != nil {
-			inode.buffers.Add(0, item.Content, BUF_CLEAN, false)
+			inode.buffers.Add(0, item.Content, BUF_CLEAN, false, false)
 		}
 	}
 	if item.ETag != nil {
