@@ -70,7 +70,6 @@ func main() {
 	app := cfg.NewApp()
 
 	var flags *cfg.FlagStorage
-	var child *os.Process
 
 	app.Action = func(c *cli.Context) (err error) {
 		// We should get two arguments exactly. Otherwise error out.
@@ -187,6 +186,9 @@ func main() {
 				return
 			}
 			fs.SyncTree(nil)
+			if err := fs.SaveCache(); err != nil {
+				mainLog.Errorf("Failed to save persistent cache: %v", err)
+			}
 
 			mainLog.Info().Msg("Successfully exiting.")
 		}
@@ -195,7 +197,7 @@ func main() {
 
 	err := app.Run(cfg.MessageMountFlags(os.Args))
 	if err != nil {
-		if flags != nil && !flags.Foreground && child != nil {
+		if flags != nil && !flags.Foreground {
 			mainLog.Fatal().Msg("Unable to mount file system, see syslog for details")
 		}
 		os.Exit(1)

@@ -260,7 +260,8 @@ func (l *BufferList) unqueue(b *FileBuffer) {
 	if b.state != BUF_CLEAN {
 		l.uncleanCount--
 	}
-	if b.state == BUF_DIRTY {
+	switch b.state {
+	case BUF_DIRTY:
 		sp := l.helpers.PartNum(b.offset)
 		ep := l.helpers.PartNum(b.offset + b.length - 1)
 		for i := sp; i < ep+1; i++ {
@@ -274,7 +275,7 @@ func (l *BufferList) unqueue(b *FileBuffer) {
 				delete(l.dirtyParts, i)
 			}
 		}
-	} else if b.state == BUF_CLEAN || b.state == BUF_FLUSHED_FULL {
+	case BUF_CLEAN, BUF_FLUSHED_FULL:
 		l.helpers.UnqueueCleanBuffer(b)
 	}
 }

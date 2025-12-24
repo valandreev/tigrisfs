@@ -45,19 +45,6 @@ const (
 	AzureBlobMetaDataHeaderPrefix = "x-ms-meta-"
 )
 
-// Azure Blob Store API does not not treat headers as case insensitive.
-// This is particularly a problem with `AzureDirBlobMetadataKey` header.
-// pipelineWrapper wraps around an implementation of `Pipeline` and
-// changes the Do function to update the input request headers before invoking
-// Do on the wrapping Pipeline onject.
-type pipelineWrapper struct {
-	p pipeline.Pipeline
-}
-
-type requestWrapper struct {
-	pipeline.Request
-}
-
 var pipelineHTTPClient = newDefaultHTTPClient()
 
 // Clone of https://github.com/Azure/azure-pipeline-go/blob/master/pipeline/core.go#L202
@@ -603,13 +590,14 @@ func (b *AZBlob) ListBlobs(param *ListBlobsInput) (*ListBlobsOutput, error) {
 		// because azure doesn't use dir/ blobs, dir/ would not show up
 		// so we make another request to fill that in
 		dirBlob, err := b.HeadBlob(&HeadBlobInput{options.Prefix})
-		if err == nil {
+		switch err {
+		case nil:
 			*dirBlob.Key += "/"
 			items = append(items, dirBlob.BlobItemOutput)
 			sortItems = true
-		} else if err == syscall.ENOENT {
+		case syscall.ENOENT:
 			err = nil
-		} else {
+		default:
 			return nil, err
 		}
 	}

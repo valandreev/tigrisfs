@@ -299,7 +299,7 @@ func NewGoofys(ctx context.Context, bucketName string, flags *cfg.FlagStorage) (
 	return newGoofys(ctx, bucketName, flags, NewBackend)
 }
 
-func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
+func newGoofys(_ context.Context, bucket string, flags *cfg.FlagStorage,
 	newBackend func(string, *cfg.FlagStorage) (StorageBackend, error),
 ) (*Goofys, error) {
 	// Set up the basic struct.
@@ -393,6 +393,10 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 		fs.diskFdQueue = NewFDQueue(int(fs.flags.MaxDiskCacheFD))
 		if fs.flags.MaxDiskCacheFD > 0 {
 			go fs.FDCloser()
+		}
+
+		if err := fs.LoadCache(); err != nil {
+			mainLog.Warnf("Failed to load persistent cache: %v", err)
 		}
 	}
 

@@ -78,7 +78,7 @@ func IsADLv1Endpoint(endpoint string) bool {
 	// return strings.HasSuffix(endpoint, ".azuredatalakestore.net")
 }
 
-func adlLogResp(level zerolog.Level, r *http.Response) {
+func adlLogResp(_ zerolog.Level, r *http.Response) {
 	op := r.Request.URL.Query().Get("op")
 	requestId := r.Request.Header.Get(ADL1_REQUEST_ID)
 	respId := r.Header.Get(ADL1_REQUEST_ID)
@@ -263,7 +263,7 @@ func (b *ADLv1) HeadBlob(param *HeadBlobInput) (*HeadBlobOutput, error) {
 	}, nil
 }
 
-func (b *ADLv1) appendToListResults(path string, recursive bool, startAfter string,
+func (b *ADLv1) appendToListResults(path string, recursive bool, _ string,
 	maxKeys *uint32, prefixes []BlobPrefixOutput, items []BlobItemOutput,
 ) (adl.FileStatusesResult, []BlobPrefixOutput, []BlobItemOutput, error) {
 	res, err := b.client.ListFileStatus(context.TODO(), b.account, b.path(path),

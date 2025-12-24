@@ -382,10 +382,7 @@ func adlv2ToBlobItem(res adl2.ReadCloser, objKey string) BlobItemOutput {
 }
 
 func (b *ADLv2) HeadBlob(param *HeadBlobInput) (*HeadBlobOutput, error) {
-	key := param.Key
-	if strings.HasSuffix(key, "/") {
-		key = key[:len(key)-1]
-	}
+	key := strings.TrimSuffix(param.Key, "/")
 
 	// GetProperties(GetStatus) does not return user defined
 	// properties, despite what the documentation says, use a 0
@@ -545,14 +542,8 @@ func (b *ADLv2) DeleteBlobs(param *DeleteBlobsInput) (*DeleteBlobsOutput, error)
 func (b *ADLv2) RenameBlob(param *RenameBlobInput) (*RenameBlobOutput, error) {
 	var continuation string
 
-	renameDest := param.Destination
-	if strings.HasSuffix(renameDest, "/") {
-		renameDest = renameDest[:len(renameDest)-1]
-	}
-	renameSource := param.Source
-	if strings.HasSuffix(renameSource, "/") {
-		renameSource = renameSource[:len(renameSource)-1]
-	}
+	renameDest := strings.TrimSuffix(param.Destination, "/")
+	renameSource := strings.TrimSuffix(param.Source, "/")
 	renameSource = "/" + b.bucket + "/" + url.PathEscape(renameSource)
 
 	var requestId string
@@ -775,7 +766,7 @@ func (b *ADLv2) MultipartBlobBegin(param *MultipartBlobBeginInput) (*MultipartBl
 		for {
 			select {
 			case <-commitData.RenewLeaseStop:
-				break
+				return
 			case <-time.After(30 * time.Second):
 				b.lease(adl2.Renew, param.Key, leaseId, 60, "")
 			}

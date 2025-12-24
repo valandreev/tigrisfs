@@ -162,9 +162,10 @@ func (inode *Inode) OpenDir() (dh *DirHandle) {
 			}
 		}
 
-		if seqMode == 0 {
+		switch seqMode {
+		case 0:
 			// same directory again
-		} else if seqMode == 1 {
+		case 1:
 			if parent.dir.seqOpenDirScore < 255 {
 				parent.dir.seqOpenDirScore++
 			}
@@ -184,7 +185,7 @@ func (inode *Inode) OpenDir() (dh *DirHandle) {
 					fuseLog.Debugf("%v in readdir mode", inode.FullName())
 				}
 			}
-		} else {
+		default:
 			parent.dir.seqOpenDirScore = 0
 			if dirIdx == -1 {
 				dirIdx = parent.findChildIdxUnlocked(inode.Name)
@@ -404,10 +405,10 @@ func (inode *Inode) sealDir() {
 	} else {
 		inode.Attributes.Mtime, inode.Attributes.Ctime = inode.findChildMaxTime()
 	}
-	
+
 	// Increment generation to signal all handles need revalidation
 	atomic.AddUint64(&inode.dir.generation, 1)
-	
+
 	inode.removeExpired("")
 }
 
@@ -660,15 +661,16 @@ func (dh *DirHandle) checkDirPosition() {
 		dh.lastInternalOffset = -1
 		dh.generation = currentGen
 	}
-	
+
 	if dh.lastInternalOffset < 0 {
 		parent := dh.inode
 		// Directory position invalidated, try to find it again using lastName
-		if dh.lastName == "." {
+		switch dh.lastName {
+		case ".":
 			dh.lastInternalOffset = 1
-		} else if dh.lastName == ".." {
+		case "..":
 			dh.lastInternalOffset = 2
-		} else {
+		default:
 			dh.lastInternalOffset = sort.Search(len(parent.dir.Children), parent.findInodeFunc(dh.lastName))
 			if dh.lastInternalOffset < len(parent.dir.Children) && parent.dir.Children[dh.lastInternalOffset].Name == dh.lastName {
 				dh.lastInternalOffset++
@@ -788,11 +790,12 @@ func (dh *DirHandle) Seek(newOffset fuseops.DirOffset) {
 		if dh.lastInternalOffset > 2+len(dh.inode.dir.Children) {
 			dh.lastInternalOffset = 2 + len(dh.inode.dir.Children)
 		}
-		if dh.lastInternalOffset == 1 {
+		switch dh.lastInternalOffset {
+		case 1:
 			dh.lastName = "."
-		} else if dh.lastInternalOffset == 2 {
+		case 2:
 			dh.lastName = ".."
-		} else {
+		default:
 			dh.inode.dir.Children[dh.lastInternalOffset-3].mu.Lock()
 			dh.lastName = dh.inode.dir.Children[dh.lastInternalOffset-3].Name
 			dh.inode.dir.Children[dh.lastInternalOffset-3].mu.Unlock()
@@ -865,10 +868,11 @@ func (dh *DirHandle) ReadDir() (inode *Inode, err error) {
 	defer parent.mu.Unlock()
 
 	dh.checkDirPosition()
-	if dh.lastInternalOffset == 0 {
+	switch dh.lastInternalOffset {
+	case 0:
 		// "."
 		return parent, nil
-	} else if dh.lastInternalOffset == 1 {
+	case 1:
 		// ".."
 		if parent.Parent != nil {
 			return parent.Parent, nil
@@ -1047,10 +1051,10 @@ func (parent *Inode) removeChildUnlocked(inode *Inode) {
 	if l == 0 {
 		return
 	}
-	
+
 	// Increment generation to invalidate all directory handles
 	atomic.AddUint64(&parent.dir.generation, 1)
-	
+
 	i := sort.Search(l, parent.findInodeFunc(inode.Name))
 	if i >= l || parent.dir.Children[i].Name != inode.Name {
 		panic(fmt.Sprintf("%v.removeName(%v) but child not found: %v",
@@ -2025,7 +2029,7 @@ func (parent *Inode) recheckInodeByName(name string) (newInode *Inode, err error
 	parent.mu.Lock()
 	currentChild := parent.findChildUnlocked(name)
 	parent.mu.Unlock()
-	
+
 	newInode, err = parent.LookUp(name, currentChild == nil && !parent.fs.flags.NoPreloadDir)
 	if err != nil {
 		if currentChild != nil {

@@ -23,7 +23,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/fs"
+	iofs "io/fs"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -179,7 +179,7 @@ func (s *GoofysTest) TestReadDirSlurpContinuation(t *C) {
 	s.mount(t, mountPoint)
 	// Check that all files are present to check that slurp works correctly with the continuation
 	count := 0
-	err = filepath.Walk(mountPoint+"/slurpc", func(path string, info fs.FileInfo, err error) error {
+	err = filepath.Walk(mountPoint+"/slurpc", func(path string, info iofs.FileInfo, err error) error {
 		t.Assert(err, IsNil)
 		if !info.IsDir() {
 			count++

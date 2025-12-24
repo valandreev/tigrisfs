@@ -321,17 +321,18 @@ func (inode *Inode) LoadRange(offset, size uint64, readAheadSize uint64, ignoreM
 	if len(readRanges) > 0 || loading {
 		for {
 			_, _, err := inode.buffers.GetData(offset, size, false)
-			if err == ErrBufferIsLoading {
+			switch err {
+			case ErrBufferIsLoading:
 				// still loading
 				inode.readCond.Wait()
-			} else if err == ErrBufferIsMissing {
+			case ErrBufferIsMissing:
 				// loading buffer disappeared => read error
 				err = inode.readError
 				if err == nil {
 					err = syscall.EIO
 				}
 				return true, err
-			} else {
+			default:
 				return true, nil
 			}
 		}

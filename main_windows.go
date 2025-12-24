@@ -26,7 +26,7 @@ import (
 
 var signalsToHandle = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
-func isSigUsr1(s os.Signal) bool {
+func isSigUsr1(_ os.Signal) bool {
 	return false
 }
 
@@ -65,13 +65,10 @@ func mount(
 func messagePath() {
 }
 
-func messageArg0() {
-}
-
-func setuid(uid int) error {
+func setuid(_ int) error {
 	return nil
 }
 
-func setgid(gid int) error {
+func setgid(_ int) error {
 	return nil
 }

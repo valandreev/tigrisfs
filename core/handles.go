@@ -736,11 +736,12 @@ func (inode *Inode) SetXattr(name string, value []byte, flags uint32) error {
 
 	if flags != 0x0 {
 		_, ok := meta[name]
-		if flags == XATTR_CREATE {
+		switch flags {
+		case XATTR_CREATE:
 			if ok {
 				return syscall.EEXIST
 			}
-		} else if flags == XATTR_REPLACE {
+		case XATTR_REPLACE:
 			if !ok {
 				return ENOATTR
 			}
@@ -871,13 +872,14 @@ func (inode *Inode) DumpThis(fn string, withBuffers bool, noLock bool) (children
 	dataMap["fn"] = fn
 	dataMap["id"] = inode.Id
 	dataMap["path"] = inode.FullName()
-	if inode.CacheState == ST_DEAD {
+	switch inode.CacheState {
+	case ST_DEAD:
 		dataMap["state"] = "dead"
-	} else if inode.CacheState == ST_CREATED {
+	case ST_CREATED:
 		dataMap["state"] = "created"
-	} else if inode.CacheState == ST_MODIFIED {
+	case ST_MODIFIED:
 		dataMap["state"] = "modified"
-	} else if inode.CacheState == ST_DELETED {
+	case ST_DELETED:
 		dataMap["state"] = "deleted"
 	}
 
