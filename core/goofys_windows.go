@@ -91,6 +91,7 @@ func (fs *GoofysWin) Init() {
 // Destroy is called when the file system is destroyed.
 func (fs *GoofysWin) Destroy() {
 	fs.initialized = false
+	fs.Shutdown()
 	fs.initCh <- 2
 }
 

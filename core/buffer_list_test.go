@@ -34,6 +34,13 @@ func (t *TestBLHelpers) QueueCleanBuffer(buf *FileBuffer) {
 func (t *TestBLHelpers) UnqueueCleanBuffer(buf *FileBuffer) {
 }
 
+func (t *TestBLHelpers) IsWriteback() bool {
+	return false
+}
+
+func (t *TestBLHelpers) DeleteFromDisk(buf *FileBuffer) {
+}
+
 func filledBuf(n int, c byte) []byte {
 	b := make([]byte, n)
 	for i := 0; i < n; i++ {

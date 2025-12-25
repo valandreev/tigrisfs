@@ -47,18 +47,18 @@ func TestDiskCache_LRU(t *testing.T) {
 
 	// Inode 1 should be gone (First In, First Out in LRU)
 	readBuf := make([]byte, 4096)
-	n, err := dc.Get(1, 0, readBuf)
+	n, err := dc.Get(1, 0, 0, readBuf)
 	assert.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
 	assert.Equal(t, 0, n)
 
 	// Inodes 2 and 3 should be there
-	n, err = dc.Get(2, 0, readBuf)
+	n, err = dc.Get(2, 0, 0, readBuf)
 	assert.NoError(t, err)
 	assert.Equal(t, 4096, n)
 	assert.Equal(t, byte('2'), readBuf[0])
 
-	n, err = dc.Get(3, 0, readBuf)
+	n, err = dc.Get(3, 0, 0, readBuf)
 	assert.NoError(t, err)
 	assert.Equal(t, 4096, n)
 	assert.Equal(t, byte('3'), readBuf[0])
@@ -90,7 +90,7 @@ func TestDiskCache_SubRange(t *testing.T) {
 	// It should find the entry starting at 64KB, which points to physical file 0.
 	// The read from physical file 0 should be at offset 64KB.
 	readBuf := make([]byte, 32*1024)
-	n, err := dc.Get(10, 64*1024, readBuf)
+	n, err := dc.Get(10, 64*1024, 0, readBuf)
 	assert.NoError(t, err)
 	assert.Equal(t, 32*1024, n)
 	assert.Equal(t, data[64*1024], readBuf[0])

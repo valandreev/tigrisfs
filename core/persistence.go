@@ -101,6 +101,7 @@ func (fs *Goofys) saveInode(batch *pebble.Batch, inode *Inode) error {
 		AttrTime:   inode.AttrTime,
 		ExpireTime: inode.ExpireTime,
 		IsDir:      inode.isDir(),
+		CacheState: inode.CacheState,
 	}
 
 	if inode.Parent != nil {
@@ -303,6 +304,13 @@ func (fs *Goofys) LoadCache() error {
 				closer.Close()
 			}
 		}
+
+		// Re-queue modified inodes
+		if inode.CacheState != ST_CACHED && inode.CacheState != ST_DEAD {
+			inode.mu.Lock()
+			inode.SetCacheState(inode.CacheState)
+			inode.mu.Unlock()
+		}
 	}
 
 	return nil
@@ -313,6 +321,7 @@ func applyCheckpoint(inode *Inode, cp InodeCheckpoint) {
 	inode.AttrTime = cp.AttrTime
 	inode.ExpireTime = cp.ExpireTime
 	inode.userMetadata = cp.UserMetadata
+	inode.CacheState = cp.CacheState
 	if inode.isDir() {
 		inode.dir.listDone = cp.ListDone
 		inode.dir.listMarker = cp.ListMarker

@@ -175,7 +175,17 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 		fh.inode.ResizeUnlocked(end, false)
 	}
 
-	allocated := fh.inode.buffers.Add(uint64(offset), data, BUF_DIRTY, copyData, false)
+	onDisk := false
+	if fh.inode.fs.flags.Writeback {
+		errCache := fh.inode.fs.diskCache.Put(fh.inode.Id, uint64(offset), data)
+		if errCache == nil {
+			onDisk = true
+		} else {
+			fuseLog.Warnf("Failed to write to cache in writeback mode: %v", errCache)
+		}
+	}
+
+	allocated := fh.inode.buffers.Add(uint64(offset), data, BUF_DIRTY, copyData, onDisk)
 	atomic.StoreUint64(&fh.inode.fs.hasNewWrites, 1)
 
 	fh.inode.lastWriteEnd = end
@@ -239,26 +249,47 @@ func (inode *Inode) loadFromDisk(diskRanges []Range) (allocated int64, err error
 	if err != nil {
 		return
 	}
+	var totalAllocated int64
 	for _, rr := range diskRanges {
 		readSize := rr.End - rr.Start
 		data := make([]byte, readSize)
 		// Use DiskCache
 		if inode.fs.diskCache != nil {
-			n, errCache := inode.fs.diskCache.Get(inode.Id, rr.Start, data)
+			var diskOffset uint64
+			isDirty := false
+			inode.buffers.at.Ascend(rr.Start+1, func(end uint64, b *FileBuffer) bool {
+				if b.offset <= rr.Start {
+					diskOffset = b.diskOffset
+					isDirty = b.state == BUF_DIRTY
+				}
+				return false
+			})
+
+			n, errCache := inode.fs.diskCache.Get(inode.Id, rr.Start, diskOffset, data)
 			if errCache == nil {
 				inode.buffers.ReviveFromDisk(rr.Start, data[:n])
 			} else {
 				// Failed to read from cache (evicted?), fall back to server
-				fuseLog.Warnf("Failed to read from disk cache: %v, falling back to server", errCache)
-				// Remove 'loading' state so it can be re-fetched
-				inode.buffers.RemoveLoading(rr.Start, readSize)
-				// Trigger load from server
-				serverRanges := []Range{rr}
-				inode.loadFromServer(serverRanges, 0, true)
+				if isDirty {
+					fuseLog.Errorf("CRITICAL: Failed to read DIRTY buffer from disk cache (inode %d, logical %d, physical %d): %v. Data might be lost!", inode.Id, rr.Start, diskOffset, errCache)
+					// We can't fall back to server because server has old data
+					// For now, let it fail the read
+					if err == nil {
+						err = errCache
+					}
+				} else {
+					fuseLog.Warnf("Failed to read from disk cache (inode %d, logical %d, physical %d): %v, falling back to server", inode.Id, rr.Start, diskOffset, errCache)
+					// Remove 'loading' state so it can be re-fetched
+					inode.buffers.RemoveLoading(rr.Start, readSize)
+					// Trigger load from server
+					serverRanges := []Range{rr}
+					inode.loadFromServer(serverRanges, 0, true)
+				}
 			}
 		}
+		totalAllocated += int64(readSize)
 	}
-	return 0, nil
+	return totalAllocated, nil
 }
 
 // Load some inode data into memory
@@ -618,6 +649,10 @@ func (fh *FileHandle) Release() {
 }
 
 func (inode *Inode) getMultiReader(offset, size uint64) (reader *MultiReader, ids map[uint64]bool, err error) {
+	err = inode.EnsureLoaded(offset, size)
+	if err != nil {
+		return nil, nil, err
+	}
 	inode.buffers.SplitAt(offset)
 	inode.buffers.SplitAt(offset + size)
 	data, ids, err := inode.buffers.GetData(offset, size, true)
@@ -637,6 +672,7 @@ func (inode *Inode) recordFlushError(err error) {
 	// The original idea was to schedule retry only if err != nil
 	// However, current version unblocks flushing in case of bugs, so... okay. Let it be
 	inode.fs.ScheduleRetryFlush()
+	inode.fs.WakeupFlusher()
 }
 
 func (inode *Inode) TryFlush(priority int) bool {
@@ -1825,6 +1861,7 @@ func (inode *Inode) updateFromFlush(size uint64, etag *string, lastModified *tim
 		inode.knownETag = *etag
 	}
 	inode.SetAttrTime(time.Now())
+	inode.fs.WakeupFlusher()
 }
 
 func (inode *Inode) SyncFile() (err error) {

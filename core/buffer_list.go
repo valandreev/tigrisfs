@@ -55,6 +55,8 @@ type BufferListHelpers interface {
 	PartNum(uint64) uint64
 	QueueCleanBuffer(*FileBuffer)
 	UnqueueCleanBuffer(*FileBuffer)
+	IsWriteback() bool
+	DeleteFromDisk(*FileBuffer)
 }
 
 type dirtyPart struct {
@@ -186,7 +188,7 @@ func (l *BufferList) EvictFromMemory(buf *FileBuffer) (allocated int64, deleted 
 	}
 	buf.ptr = nil
 	buf.data = nil
-	if buf.onDisk {
+	if buf.onDisk && !l.helpers.IsWriteback() {
 		// Try to merge it with the previous buffer
 		var prev *FileBuffer
 		l.at.Descend(buf.offset, func(end uint64, b *FileBuffer) bool {
@@ -196,12 +198,14 @@ func (l *BufferList) EvictFromMemory(buf *FileBuffer) (allocated int64, deleted 
 		if prev != nil && prev.offset+prev.length == buf.offset &&
 			prev.state == buf.state &&
 			prev.ptr == nil &&
-			prev.onDisk == buf.onDisk {
+			prev.onDisk == buf.onDisk &&
+			prev.diskOffset+prev.length == buf.diskOffset {
 			l.unqueue(buf)
 			l.unqueue(prev)
 			l.at.Delete(prev.offset + prev.length)
 			buf.length += prev.length
 			buf.offset = prev.offset
+			buf.diskOffset = prev.diskOffset
 			l.queue(buf)
 			deleted = true
 		}
@@ -313,7 +317,7 @@ func (l *BufferList) queue(b *FileBuffer) {
 		for i := sp; i <= ep; i++ {
 			l.referenceDirtyPart(i)
 		}
-	} else if b.state == BUF_CLEAN || b.state == BUF_FLUSHED_FULL {
+	} else if b.state == BUF_CLEAN || b.state == BUF_FLUSHED_FULL || (b.state == BUF_DIRTY && b.onDisk) {
 		l.helpers.QueueCleanBuffer(b)
 	}
 }
@@ -383,6 +387,7 @@ func (l *BufferList) delete(b *FileBuffer) (allocated int64) {
 		b.ptr = nil
 		b.data = nil
 	}
+	l.helpers.DeleteFromDisk(b)
 	l.at.Delete(b.offset + b.length)
 	l.unqueue(b)
 	return
@@ -449,8 +454,9 @@ func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferStat
 		prev.offset+prev.length == offset &&
 		l.helpers.PartNum(prev.offset) == l.helpers.PartNum(offset) &&
 		prev.state == state &&
+		(state == BUF_CLEAN || !l.helpers.IsWriteback()) &&
+		!prev.onDisk && !onDisk &&
 		prev.ptr != nil && prev.ptr.refs == 1 &&
-		prev.onDisk == onDisk &&
 		(len(prev.data)+len(data) <= cap(prev.data) || cap(prev.data) <= MAX_BUF/2) {
 		// We can append to the previous buffer if it doesn't result
 		// in overwriting data that may be referenced by other buffers

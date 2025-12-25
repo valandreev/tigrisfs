@@ -568,7 +568,7 @@ func (fs *Goofys) FreeSomeCleanBuffers(origSize int64) (int64, bool) {
 		toFs := -1
 		buf := inode.buffers.Get(cleanEnd)
 		// Never evict buffers flushed in an incomplete (last) part
-		if buf != nil && (buf.state == BUF_CLEAN || buf.state == BUF_FLUSHED_FULL) &&
+		if buf != nil && (buf.state == BUF_CLEAN || buf.state == BUF_FLUSHED_FULL || (buf.state == BUF_DIRTY && buf.onDisk)) &&
 			buf.ptr != nil && !inode.IsRangeLocked(buf.offset, buf.length, false) {
 			fs.tryEvictToDisk(inode, buf, &toFs)
 			allocated, _ := inode.buffers.EvictFromMemory(buf)

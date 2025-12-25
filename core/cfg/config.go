@@ -108,6 +108,7 @@ type FlagStorage struct {
 	NoPreloadDir        bool
 	NoVerifySSL         bool
 	WinRefreshDirs      bool
+	Writeback           bool
 
 	// Debugging
 	DebugMain  bool

@@ -187,6 +187,31 @@ func (inode *Inode) UnqueueCleanBuffer(buf *FileBuffer) {
 	inode.fs.cleanQueue.Delete(buf)
 }
 
+func (inode *Inode) IsWriteback() bool {
+	return inode.fs.flags.Writeback
+}
+
+func (inode *Inode) DeleteFromDisk(buf *FileBuffer) {
+	if inode.fs.diskCache != nil && buf.onDisk {
+		inode.fs.diskCache.Delete(inode.Id, buf.offset, buf.diskOffset)
+	}
+}
+
+func (inode *Inode) EnsureLoaded(offset, size uint64) error {
+	if inode.fs.flags.CachePath == "" {
+		return nil
+	}
+	diskRanges := inode.buffers.AddLoadingFromDisk(offset, size)
+	if len(diskRanges) > 0 {
+		allocated, err := inode.loadFromDisk(diskRanges)
+		if allocated != 0 {
+			_ = inode.fs.bufferPool.Use(allocated, true)
+		}
+		return err
+	}
+	return nil
+}
+
 // LOCKS_EXCLUDED(inode.mu)
 func (inode *Inode) SetFromBlobItem(item *BlobItemOutput) {
 	inode.mu.Lock()

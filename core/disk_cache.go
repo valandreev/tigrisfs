@@ -40,6 +40,8 @@ type DiskCache struct {
 	inodes map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]
 	// Map to find LRU element for any physical cache file (InodeID, PhysicalOffset)
 	items map[CacheKey]*list.Element
+	// Back-index to find all logical entries for a physical file
+	logicalOffsets map[CacheKey]map[uint64]bool
 }
 
 func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
@@ -58,12 +60,17 @@ func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
 		}
 	}
 
+	if maxSizeGB <= 0 {
+		maxSizeGB = 10
+	}
+
 	dc := &DiskCache{
-		basePath: dataPath,
-		MaxSize:  int64(maxSizeGB) * 1024 * 1024 * 1024,
-		lru:      list.New(),
-		inodes:   make(map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]),
-		items:    make(map[CacheKey]*list.Element),
+		basePath:       dataPath,
+		MaxSize:        int64(maxSizeGB) * 1024 * 1024 * 1024,
+		lru:            list.New(),
+		inodes:         make(map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]),
+		items:          make(map[CacheKey]*list.Element),
+		logicalOffsets: make(map[CacheKey]map[uint64]bool),
 	}
 
 	return dc, nil
@@ -125,13 +132,21 @@ func (c *DiskCache) addEntryLocked(inodeID fuseops.InodeID, logicalOffset, physi
 		tr = btree.NewBTreeG[*CacheEntry](cacheEntryLess)
 		c.inodes[inodeID] = tr
 	}
-	tr.Set(entry)
+	old, replaced := tr.Set(entry)
+	if replaced {
+		oldPKey := CacheKey{InodeID: inodeID, Offset: old.PhysicalOffset}
+		if oldOffsets, ok := c.logicalOffsets[oldPKey]; ok {
+			delete(oldOffsets, old.LogicalOffset)
+		}
+	}
 
 	// Update LRU (shared for all logical entries pointing to same physical file)
 	if el, exists := c.items[pKey]; exists {
 		oldEntry := el.Value.(*CacheEntry)
+		c.CurSize -= oldEntry.Size
+		c.CurSize += size
+		el.Value = entry
 		if accessTime.After(oldEntry.AccessTime) {
-			oldEntry.AccessTime = accessTime
 			c.lru.MoveToFront(el)
 		}
 	} else {
@@ -139,58 +154,51 @@ func (c *DiskCache) addEntryLocked(inodeID fuseops.InodeID, logicalOffset, physi
 		c.items[pKey] = el
 		c.CurSize += size // Initial size of the physical file
 	}
+
+	// Update back-index of logical offsets for this physical file
+	offsets, ok := c.logicalOffsets[pKey]
+	if !ok {
+		offsets = make(map[uint64]bool)
+		c.logicalOffsets[pKey] = offsets
+	}
+	offsets[logicalOffset] = true
 }
 
-func (c *DiskCache) Get(inodeID fuseops.InodeID, offset uint64, out []byte) (int, error) {
+func (c *DiskCache) Get(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, data []byte) (int, error) {
 	c.mu.Lock()
-	tr, ok := c.inodes[inodeID]
+	defer c.mu.Unlock()
+
+	pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
+	el, ok := c.items[pKey]
 	if !ok {
-		c.mu.Unlock()
 		return 0, os.ErrNotExist
 	}
 
-	var bestEntry *CacheEntry
-	tr.Descend(&CacheEntry{LogicalOffset: offset}, func(item *CacheEntry) bool {
-		if item.LogicalOffset <= offset && item.LogicalOffset+uint64(item.Size) > offset {
-			bestEntry = item
-		}
-		return false
-	})
-
-	if bestEntry == nil {
-		c.mu.Unlock()
-		return 0, os.ErrNotExist
-	}
-
-	pKey := CacheKey{InodeID: inodeID, Offset: bestEntry.PhysicalOffset}
-	el := c.items[pKey]
+	entry := el.Value.(*CacheEntry)
 	c.lru.MoveToFront(el)
-	bestEntry.AccessTime = time.Now()
+	entry.AccessTime = time.Now()
 
-	path := c.getPath(inodeID, bestEntry.PhysicalOffset)
-	c.mu.Unlock()
-
+	path := c.getPath(inodeID, physicalOffset)
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			c.mu.Lock()
+			// If the file is not found, remove the entry from cache metadata
+			// Note: This assumes removeEntry can handle being called with inodeID and physicalOffset
+			// If removeEntry expects *list.Element, this will need adjustment.
+			// For now, let's assume a helper or modified removeEntry exists.
+			// A safer approach might be to find the element first:
 			if el, ok := c.items[pKey]; ok {
 				c.removeEntry(el)
 			}
-			c.mu.Unlock()
 		}
 		return 0, err
 	}
 	defer f.Close()
 
-	fileOffset := int64(offset - bestEntry.PhysicalOffset)
-	if _, err := f.Seek(fileOffset, io.SeekStart); err != nil {
-		return 0, err
-	}
-
-	n, err := io.ReadFull(f, out)
-	if err == io.ErrUnexpectedEOF {
-		err = nil
+	fileOffset := int64(logicalOffset - physicalOffset)
+	n, err := f.ReadAt(data, fileOffset)
+	if n > 0 && (err == nil || err == io.EOF) {
+		return n, nil
 	}
 	return n, err
 }
@@ -211,23 +219,46 @@ func (c *DiskCache) evictIfNeeded() {
 
 func (c *DiskCache) removeEntry(el *list.Element) {
 	entry := el.Value.(*CacheEntry)
+	pKey := CacheKey{InodeID: entry.InodeID, Offset: entry.PhysicalOffset}
 
 	// Remove physical file
 	path := c.getPath(entry.InodeID, entry.PhysicalOffset)
 	os.Remove(path)
-
 	c.CurSize -= entry.Size
-	pKey := CacheKey{InodeID: entry.InodeID, Offset: entry.PhysicalOffset}
-	delete(c.items, pKey)
 
+	// Remove all logical entries from BTree that point to this physical file
 	if tr, ok := c.inodes[entry.InodeID]; ok {
-		tr.Delete(entry)
+		if offsets, ok := c.logicalOffsets[pKey]; ok {
+			for logicalOffset := range offsets {
+				tr.Delete(&CacheEntry{LogicalOffset: logicalOffset})
+			}
+		}
 		if tr.Len() == 0 {
 			delete(c.inodes, entry.InodeID)
 		}
 	}
 
+	delete(c.items, pKey)
+	delete(c.logicalOffsets, pKey)
 	c.lru.Remove(el)
+}
+
+func (c *DiskCache) Delete(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
+	if offsets, ok := c.logicalOffsets[pKey]; ok {
+		delete(offsets, logicalOffset)
+		if tr, ok := c.inodes[inodeID]; ok {
+			tr.Delete(&CacheEntry{LogicalOffset: logicalOffset})
+		}
+		if len(offsets) == 0 {
+			if el, ok := c.items[pKey]; ok {
+				c.removeEntry(el)
+			}
+		}
+	}
 }
 
 func (c *DiskCache) RestoreState(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, size int64, accessTime time.Time) {

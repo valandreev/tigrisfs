@@ -24,6 +24,7 @@ type InodeCheckpoint struct {
 	AttrTime   time.Time
 	ExpireTime time.Time
 	IsDir      bool
+	CacheState int32
 
 	// Directory specific
 	ListDone   bool

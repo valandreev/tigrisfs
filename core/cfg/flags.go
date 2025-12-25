@@ -18,6 +18,7 @@
 package cfg
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"runtime"
@@ -166,6 +167,10 @@ MISC OPTIONS:
 		cli.BoolFlag{
 			Name:  "refresh-dirs",
 			Usage: "Automatically refresh open directories using notifications under Windows",
+		},
+		cli.BoolFlag{
+			Name:  "writeback",
+			Usage: "Enable writeback cache mode (requires --cache)",
 		},
 	}
 
@@ -933,6 +938,7 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		PreferPatchUploads:  c.Bool("prefer-patch-uploads"),
 		NoPreloadDir:        c.Bool("no-preload-dir"),
 		NoVerifySSL:         c.Bool("no-verify-ssl"),
+		Writeback:           c.Bool("writeback"),
 
 		// Common Backend Config
 		Endpoint:       c.String("endpoint"),
@@ -1038,6 +1044,11 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 
 	flags.MountPointArg = c.Args()[1]
 	flags.MountPoint = flags.MountPointArg
+	if flags.Writeback && flags.CachePath == "" {
+		fmt.Fprintf(os.Stderr, "--writeback requires --cache\n")
+		os.Exit(1)
+	}
+
 	var err error
 
 	defer func() {
