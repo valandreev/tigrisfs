@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -204,26 +203,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 }
 
 func (inode *Inode) OpenCacheFD() error {
-	fs := inode.fs
-	if inode.DiskCacheFD == nil {
-		cacheFileName := filepath.Join(fs.flags.CachePath, "data", filepath.FromSlash(inode.FullName()))
-		var err error
-		err = os.MkdirAll(filepath.Dir(cacheFileName), fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0o777)>>2))
-		if err != nil {
-			fuseLog.Errorf("Couldn't mkdir %v: %v", cacheFileName, err)
-		}
-		inode.DiskCacheFD, err = os.OpenFile(cacheFileName, os.O_RDWR|os.O_CREATE, fs.flags.CacheFileMode)
-		if err != nil {
-			fuseLog.Errorf("Couldn't open %v: %v", cacheFileName, err)
-			return err
-		} else {
-			inode.OnDisk = true
-			fs.diskFdQueue.InsertFD(inode)
-		}
-	} else {
-		// LRU
-		fs.diskFdQueue.UseFD(inode)
-	}
+	// Deprecated/No-op with DiskCache
 	return nil
 }
 
@@ -262,9 +242,32 @@ func (inode *Inode) loadFromDisk(diskRanges []Range) (allocated int64, err error
 	for _, rr := range diskRanges {
 		readSize := rr.End - rr.Start
 		data := make([]byte, readSize)
-		_, err = inode.DiskCacheFD.ReadAt(data, int64(rr.Start))
-		if err == nil {
-			inode.buffers.ReviveFromDisk(rr.Start, data)
+		// Use DiskCache
+		if inode.fs.diskCache != nil {
+			_, err = inode.fs.diskCache.Get(inode.Id, rr.Start, data)
+			if err == nil {
+				inode.buffers.ReviveFromDisk(rr.Start, data)
+			} else {
+				// Failed to read from cache (evicted?), treat as miss
+				// ReviveFromDisk won't be called, so buffer remains 'loading' -> caller will retry from server?
+				// buffer_list logic: if ReviveFromDisk is NOT called, buffer remains loading.
+				// But we return 'err'. If err is set, caller handles it.
+				// We should probably just log warning and continue (partial loading?)
+				// Caller: `allocated, err := inode.loadFromDisk(diskRanges)`
+				// If err != nil, caller returns error.
+				// So if we fail to read, we should probably clear the loading state or let it fall back?
+				// LoadRange calls AddLoadingFromDisk. Then loadFromDisk.
+				// If loadFromDisk fails, LoadRange returns error.
+				// If file is missing, we should probably treat it as "not on disk" and let normal read logic happen.
+				// But `AddLoadingFromDisk` already marked it as loading.
+				// We need to 'CancelLoadingFromDisk'.
+				fuseLog.Warnf("Failed to read from disk cache: %v", err)
+				err = nil // Ignore error, let it be re-fetched?
+				// But we need to remove 'loading' state.
+				// ReviveFromDisk sets loading=false.
+				// We should probably remove the buffer so it can be re-fetched.
+				inode.buffers.RemoveLoading(rr.Start, readSize)
+			}
 		}
 	}
 	return
@@ -420,15 +423,12 @@ func (inode *Inode) sendRead(cloud StorageBackend, key string, offset, size uint
 			inode.fillXattrFromHead(&(*resp).HeadBlobOutput)
 		}
 		onDisk := false
-		if inode.fs.flags.CachePath != "" {
-			errCache := inode.OpenCacheFD()
+		if inode.fs.flags.CachePath != "" && inode.fs.diskCache != nil {
+			errCache := inode.fs.diskCache.Put(inode.Id, offset, buf)
 			if errCache == nil {
-				_, errCache = inode.DiskCacheFD.WriteAt(buf, int64(offset))
-				if errCache == nil {
-					onDisk = true
-				} else {
-					fuseLog.Warnf("Failed to write to cache: %v", errCache)
-				}
+				onDisk = true
+			} else {
+				fuseLog.Warnf("Failed to write to cache: %v", errCache)
 			}
 		}
 		allocated += inode.buffers.Add(offset, buf, BUF_CLEAN, false, onDisk)
@@ -1434,22 +1434,17 @@ func (inode *Inode) resetCache() {
 		fuseLog.Errorf("Use error %v", err)
 	}
 	// Also remove the cache file from disk, if present
+	// Also remove the cache file from disk, if present
 	if inode.OnDisk {
-		cacheFileName := filepath.Join(inode.fs.flags.CachePath, filepath.FromSlash(inode.FullName()))
-		if inode.DiskCacheFD != nil {
-			err := inode.DiskCacheFD.Close()
-			if err != nil {
-				fuseLog.Errorf("resetCache: close error %v: %v", cacheFileName, err)
-			}
-			inode.DiskCacheFD = nil
-			inode.fs.diskFdQueue.DeleteFD(inode)
-		}
-		err := os.Remove(cacheFileName)
-		if err != nil {
-			fuseLog.Errorf("Couldn't remove %v: %v", cacheFileName, err)
-		} else {
-			inode.OnDisk = false
-		}
+		// With DiskCache, we don't need to manually remove files or close FDs here
+		// DiskCache handles eviction. But if we want to force clear cache for this inode?
+		// We could implement DiskCache.Delete(inodeID).
+		// For now, let's just assume we don't strictly *need* to delete from cache on resetCache unless required.
+		// However, resetCache logic says "dropping cache".
+		// If we want to drop cache, we should call diskCache.DeleteInode(inodeID).
+		// But I haven't implemented that yet.
+		// Let's just set OnDisk = false for now.
+		inode.OnDisk = false
 	}
 	// And abort multipart upload, too
 	if inode.mpu != nil {

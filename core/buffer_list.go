@@ -630,7 +630,7 @@ func (l *BufferList) ReviveFromDisk(offset uint64, data []byte) {
 }
 
 func (l *BufferList) RemoveLoading(offset, size uint64) {
-	l.RemoveRange(offset, size, func(b *FileBuffer) bool { return !b.onDisk && b.loading })
+	l.RemoveRange(offset, size, func(b *FileBuffer) bool { return b.loading })
 }
 
 func (l *BufferList) split(b *FileBuffer, offset uint64) (left, right *FileBuffer) {

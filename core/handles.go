@@ -113,8 +113,6 @@ type Inode struct {
 	dirtyQueueId   uint64
 	buffers        BufferList
 	readRanges     []ReadRange
-	DiskFDQueueID  uint64
-	DiskCacheFD    *os.File
 	OnDisk         bool
 	forceFlush     bool
 	IsFlushing     int

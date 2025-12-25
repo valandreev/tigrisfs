@@ -7,11 +7,12 @@ import (
 )
 
 type BufferStateCheckpoint struct {
-	Offset  uint64
-	Length  uint64
-	State   BufferState
-	DirtyID uint64
-	OnDisk  bool
+	Offset     uint64
+	Length     uint64
+	State      BufferState
+	DirtyID    uint64
+	OnDisk     bool
+	AccessTime time.Time
 }
 
 type InodeCheckpoint struct {

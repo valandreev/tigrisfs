@@ -113,7 +113,7 @@ type Goofys struct {
 
 	zeroBuf []byte
 
-	diskFdQueue *FDQueue
+	diskCache *DiskCache
 
 	stats OpStats
 
@@ -398,13 +398,15 @@ func newGoofys(_ context.Context, bucket string, flags *cfg.FlagStorage,
 		shortenedEndpoint := getShortenedEndpoint(endpoint)
 		fs.flags.CachePath = filepath.Join(fs.flags.CachePath, fmt.Sprintf("%s-%s", shortenedEndpoint, fs.bucket))
 
-		fs.diskFdQueue = NewFDQueue(int(fs.flags.MaxDiskCacheFD))
-		if fs.flags.MaxDiskCacheFD > 0 {
-			go fs.FDCloser()
-		}
-
-		if err := fs.LoadCache(); err != nil {
-			mainLog.Warnf("Failed to load persistent cache: %v", err)
+		var err error
+		fs.diskCache, err = NewDiskCache(fs.flags.CachePath, fs.flags.CacheSize)
+		if err != nil {
+			mainLog.Warnf("Failed to initialize disk cache: %v", err)
+			fs.diskCache = nil
+		} else {
+			if err := fs.LoadCache(); err != nil {
+				mainLog.Warnf("Failed to load persistent cache: %v", err)
+			}
 		}
 	}
 
@@ -417,9 +419,7 @@ func (fs *Goofys) Shutdown() {
 	atomic.StoreInt32(&fs.shutdown, 1)
 	close(fs.shutdownCh)
 	fs.WakeupFlusher()
-	if fs.diskFdQueue != nil {
-		fs.diskFdQueue.cond.Broadcast()
-	}
+	fs.WakeupFlusher()
 }
 
 func getShortenedEndpoint(endpoint string) string {
@@ -549,13 +549,6 @@ func (fs *Goofys) StatPrinter() {
 	}
 }
 
-// Close unneeded cache FDs
-func (fs *Goofys) FDCloser() {
-	for atomic.LoadInt32(&fs.shutdown) == 0 {
-		fs.diskFdQueue.CloseExtra()
-	}
-}
-
 // Try to reclaim some clean buffers
 func (fs *Goofys) FreeSomeCleanBuffers(origSize int64) (int64, bool) {
 	freed := int64(0)
@@ -609,18 +602,13 @@ func (fs *Goofys) tryEvictToDisk(inode *Inode, buf *FileBuffer, toFs *int) {
 		}
 		if *toFs > 0 {
 			// Evict to disk
-			err := inode.OpenCacheFD()
+			err := fs.diskCache.Put(inode.Id, buf.offset, buf.data)
 			if err != nil {
 				*toFs = 0
+				mainLog.Errorf("Couldn't write %v bytes at offset %v to %v: %v",
+					len(buf.data), buf.offset, filepath.Join(fs.flags.CachePath, "data", "...", fmt.Sprintf("%d_%d", inode.Id, buf.offset)), err)
 			} else {
-				_, err := inode.DiskCacheFD.WriteAt(buf.data, int64(buf.offset))
-				if err != nil {
-					*toFs = 0
-					mainLog.Errorf("Couldn't write %v bytes at offset %v to %v: %v",
-						len(buf.data), buf.offset, filepath.Join(fs.flags.CachePath, "data", filepath.FromSlash(inode.FullName())), err)
-				} else {
-					buf.onDisk = true
-				}
+				buf.onDisk = true
 			}
 		}
 	}

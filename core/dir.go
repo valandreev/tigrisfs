@@ -19,7 +19,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -1801,24 +1800,12 @@ func renameInCache(fromInode *Inode, newParent *Inode, to string) {
 		delete(newParent.dir.DeletedChildren, to)
 	}
 	// Rename on-disk cache entry
-	if fromInode.OnDisk {
-		fs := fromInode.fs
-		oldFileName := fs.flags.CachePath + "/" + fromInode.FullName()
-		newDirName := fs.flags.CachePath + "/" + newParent.FullName()
-		newFileName := appendChildName(newDirName, to)
-		err := os.MkdirAll(newDirName, fs.flags.CacheFileMode|((fs.flags.CacheFileMode&0o777)>>2))
-		if err == nil {
-			err = os.Rename(oldFileName, newFileName)
-		}
-		if err != nil {
-			fuseLog.Warnf("Error renaming %v to %v: %v", oldFileName, newFileName, err)
-			if fromInode.DiskCacheFD != nil {
-				err1 := fromInode.DiskCacheFD.Close()
-				fuseLog.Warnf("Error closing disk cache fd in renaming %v to %v: %v", oldFileName, newFileName, err1)
-				fromInode.DiskCacheFD = nil
-				fromInode.fs.diskFdQueue.DeleteFD(fromInode)
-			}
-		}
+	// With the new block-based cache (DiskCache), files are stored by InodeID.
+	// Since renameInCache (for files) preserves InodeID, we don't need to move files on disk.
+	if fromInode.OnDisk && fromInode.fs.diskCache == nil {
+		// Legacy support or cleanup if we were to support hybrid?
+		// For now assuming we only use DiskCache if configured.
+		// If DiskCache is active, we do nothing here.
 	}
 	fromInode.Ref()
 	parent.removeChildUnlocked(fromInode)

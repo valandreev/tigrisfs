@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/jacobsa/fuse/fuseops"
@@ -129,12 +130,19 @@ func (fs *Goofys) saveInode(batch *pebble.Batch, inode *Inode) error {
 		var bufferCPs []BufferStateCheckpoint
 		inode.buffers.at.Scan(func(end uint64, b *FileBuffer) bool {
 			if b.onDisk {
+				atime := time.Time{}
+				if fs.diskCache != nil {
+					if t, ok := fs.diskCache.GetMeta(inode.Id, b.offset); ok {
+						atime = t
+					}
+				}
 				bufferCPs = append(bufferCPs, BufferStateCheckpoint{
-					Offset:  b.offset,
-					Length:  b.length,
-					State:   b.state,
-					DirtyID: b.dirtyID,
-					OnDisk:  true,
+					Offset:     b.offset,
+					Length:     b.length,
+					State:      b.state,
+					DirtyID:    b.dirtyID,
+					OnDisk:     true,
+					AccessTime: atime,
 				})
 			}
 			return true
@@ -282,6 +290,10 @@ func (fs *Goofys) LoadCache() error {
 							}
 							inode.buffers.at.Set(fb.offset+fb.length, fb)
 							inode.buffers.queue(fb)
+
+							if fs.diskCache != nil {
+								fs.diskCache.RestoreState(inode.Id, fb.offset, int64(fb.length), bcp.AccessTime)
+							}
 						}
 					}
 					inode.mu.Unlock()
