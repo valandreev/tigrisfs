@@ -244,33 +244,21 @@ func (inode *Inode) loadFromDisk(diskRanges []Range) (allocated int64, err error
 		data := make([]byte, readSize)
 		// Use DiskCache
 		if inode.fs.diskCache != nil {
-			_, err = inode.fs.diskCache.Get(inode.Id, rr.Start, data)
-			if err == nil {
-				inode.buffers.ReviveFromDisk(rr.Start, data)
+			n, errCache := inode.fs.diskCache.Get(inode.Id, rr.Start, data)
+			if errCache == nil {
+				inode.buffers.ReviveFromDisk(rr.Start, data[:n])
 			} else {
-				// Failed to read from cache (evicted?), treat as miss
-				// ReviveFromDisk won't be called, so buffer remains 'loading' -> caller will retry from server?
-				// buffer_list logic: if ReviveFromDisk is NOT called, buffer remains loading.
-				// But we return 'err'. If err is set, caller handles it.
-				// We should probably just log warning and continue (partial loading?)
-				// Caller: `allocated, err := inode.loadFromDisk(diskRanges)`
-				// If err != nil, caller returns error.
-				// So if we fail to read, we should probably clear the loading state or let it fall back?
-				// LoadRange calls AddLoadingFromDisk. Then loadFromDisk.
-				// If loadFromDisk fails, LoadRange returns error.
-				// If file is missing, we should probably treat it as "not on disk" and let normal read logic happen.
-				// But `AddLoadingFromDisk` already marked it as loading.
-				// We need to 'CancelLoadingFromDisk'.
-				fuseLog.Warnf("Failed to read from disk cache: %v", err)
-				err = nil // Ignore error, let it be re-fetched?
-				// But we need to remove 'loading' state.
-				// ReviveFromDisk sets loading=false.
-				// We should probably remove the buffer so it can be re-fetched.
+				// Failed to read from cache (evicted?), fall back to server
+				fuseLog.Warnf("Failed to read from disk cache: %v, falling back to server", errCache)
+				// Remove 'loading' state so it can be re-fetched
 				inode.buffers.RemoveLoading(rr.Start, readSize)
+				// Trigger load from server
+				serverRanges := []Range{rr}
+				inode.loadFromServer(serverRanges, 0, true)
 			}
 		}
 	}
-	return
+	return 0, nil
 }
 
 // Load some inode data into memory

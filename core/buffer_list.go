@@ -90,6 +90,8 @@ type FileBuffer struct {
 	loading bool
 	// Latest chunk data is written to the disk cache
 	onDisk bool
+	// Initial offset when it was written to disk (used as physical filename)
+	diskOffset uint64
 	// Chunk only contains zeroes, data and ptr are nil
 	zero bool
 	// Unmodified chunks (equal to the current server-side object state) have dirtyID = 0.
@@ -476,14 +478,15 @@ func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferStat
 	}
 	dataPtr.refs++
 	newBuf := &FileBuffer{
-		offset:  offset,
-		dirtyID: dirtyID,
-		state:   state,
-		onDisk:  onDisk,
-		zero:    false,
-		length:  uint64(len(newData)),
-		data:    newData,
-		ptr:     dataPtr,
+		offset:     offset,
+		dirtyID:    dirtyID,
+		state:      state,
+		onDisk:     onDisk,
+		diskOffset: offset,
+		zero:       false,
+		length:     uint64(len(newData)),
+		data:       newData,
+		ptr:        dataPtr,
 	}
 	l.at.Set(end, newBuf)
 	l.queue(newBuf)
@@ -646,6 +649,7 @@ func (l *BufferList) split(b *FileBuffer, offset uint64) (left, right *FileBuffe
 	}
 	b.length = b.offset + b.length - offset
 	b.offset = offset
+	// diskOffset remains the same for both halves
 	l.at.Set(offset, &startBuf)
 	l.requeueSplit(&startBuf)
 	return &startBuf, b

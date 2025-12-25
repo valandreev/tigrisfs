@@ -45,7 +45,7 @@ func TestDiskCache_LRU(t *testing.T) {
 	err = dc.Put(3, 0, data3)
 	assert.NoError(t, err)
 
-	// Inode 1 should be gone
+	// Inode 1 should be gone (First In, First Out in LRU)
 	readBuf := make([]byte, 4096)
 	n, err := dc.Get(1, 0, readBuf)
 	assert.Error(t, err)
@@ -66,6 +66,37 @@ func TestDiskCache_LRU(t *testing.T) {
 	assert.Equal(t, int64(8192), dc.CurSize)
 }
 
+func TestDiskCache_SubRange(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "disk_cache_test_subrange")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dc, _ := NewDiskCache(tmpDir, 1)
+
+	// Put 128KB block at offset 0
+	data := make([]byte, 128*1024)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	err = dc.Put(10, 0, data)
+	assert.NoError(t, err)
+
+	// Now mimic a split: add logical entry for [64K, 128K) pointing to physical file 0
+	dc.RestoreState(10, 64*1024, 0, 64*1024, time.Now())
+
+	// Read 32KB from offset 64KB (logical)
+	// It should find the entry starting at 64KB, which points to physical file 0.
+	// The read from physical file 0 should be at offset 64KB.
+	readBuf := make([]byte, 32*1024)
+	n, err := dc.Get(10, 64*1024, readBuf)
+	assert.NoError(t, err)
+	assert.Equal(t, 32*1024, n)
+	assert.Equal(t, data[64*1024], readBuf[0])
+	assert.Equal(t, data[64*1024+32*1023], readBuf[32*1023])
+}
+
 func TestDiskCache_RestoreState(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "disk_cache_test_restore")
 	if err != nil {
@@ -76,15 +107,11 @@ func TestDiskCache_RestoreState(t *testing.T) {
 	dc, _ := NewDiskCache(tmpDir, 1)
 
 	now := time.Now()
-	dc.RestoreState(10, 0, 1024, now)
-	dc.RestoreState(10, 1024, 2048, now.Add(time.Minute))
+	// logical 0, physical 0
+	dc.RestoreState(10, 0, 0, 1024, now)
+	// logical 1024, physical 0 (split)
+	dc.RestoreState(10, 1024, 0, 2048, now.Add(time.Minute))
 
-	assert.Equal(t, int64(1024+2048), dc.CurSize)
-	assert.Equal(t, 2, dc.lru.Len())
-
-	// Front is the one restored LAST in our current implementation (PushBack)
-	// Wait, RestoreState uses PushBack. So the one added last is at the Back?
-	// Let's check RestoreState code: el := c.lru.PushBack(entry)
-	// So 1024 is at front, 2048 is at back.
-	assert.Equal(t, int64(1024), dc.lru.Front().Value.(*CacheEntry).Size)
+	assert.Equal(t, int64(1024), dc.CurSize) // Second RestoreState for same physical file doesn't increase size
+	assert.Equal(t, 1, dc.lru.Len())         // Same physical file = 1 LRU entry
 }

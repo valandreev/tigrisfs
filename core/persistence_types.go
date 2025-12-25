@@ -12,6 +12,7 @@ type BufferStateCheckpoint struct {
 	State      BufferState
 	DirtyID    uint64
 	OnDisk     bool
+	DiskOffset uint64
 	AccessTime time.Time
 }
 

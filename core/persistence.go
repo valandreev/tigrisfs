@@ -142,6 +142,7 @@ func (fs *Goofys) saveInode(batch *pebble.Batch, inode *Inode) error {
 					State:      b.state,
 					DirtyID:    b.dirtyID,
 					OnDisk:     true,
+					DiskOffset: b.diskOffset,
 					AccessTime: atime,
 				})
 			}
@@ -282,17 +283,18 @@ func (fs *Goofys) LoadCache() error {
 					for _, bcp := range bufferCPs {
 						if bcp.OnDisk {
 							fb := &FileBuffer{
-								offset:  bcp.Offset,
-								length:  bcp.Length,
-								state:   bcp.State,
-								dirtyID: bcp.DirtyID,
-								onDisk:  true,
+								offset:     bcp.Offset,
+								length:     bcp.Length,
+								state:      bcp.State,
+								dirtyID:    bcp.DirtyID,
+								onDisk:     true,
+								diskOffset: bcp.DiskOffset,
 							}
 							inode.buffers.at.Set(fb.offset+fb.length, fb)
 							inode.buffers.queue(fb)
 
 							if fs.diskCache != nil {
-								fs.diskCache.RestoreState(inode.Id, fb.offset, int64(fb.length), bcp.AccessTime)
+								fs.diskCache.RestoreState(inode.Id, fb.offset, fb.diskOffset, int64(fb.length), bcp.AccessTime)
 							}
 						}
 					}

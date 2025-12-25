@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
+	"github.com/tidwall/btree"
 )
 
 type CacheKey struct {
@@ -18,10 +19,15 @@ type CacheKey struct {
 }
 
 type CacheEntry struct {
-	Key        CacheKey
-	Size       int64
-	AccessTime time.Time
-	OnDisk     bool
+	InodeID        fuseops.InodeID
+	LogicalOffset  uint64
+	PhysicalOffset uint64
+	Size           int64
+	AccessTime     time.Time
+}
+
+func cacheEntryLess(a, b *CacheEntry) bool {
+	return a.LogicalOffset < b.LogicalOffset
 }
 
 type DiskCache struct {
@@ -30,7 +36,10 @@ type DiskCache struct {
 	MaxSize  int64
 	CurSize  int64
 	lru      *list.List
-	items    map[CacheKey]*list.Element
+	// Per-inode btree of entries, sorted by logical offset
+	inodes map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]
+	// Map to find LRU element for any physical cache file (InodeID, PhysicalOffset)
+	items map[CacheKey]*list.Element
 }
 
 func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
@@ -42,7 +51,6 @@ func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
 		return nil, err
 	}
 
-	// Create subdirectories for sharding (00-ff)
 	for i := 0; i < 256; i++ {
 		shardPath := filepath.Join(dataPath, fmt.Sprintf("%02x", i))
 		if err := os.MkdirAll(shardPath, 0700); err != nil {
@@ -54,15 +62,16 @@ func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
 		basePath: dataPath,
 		MaxSize:  int64(maxSizeGB) * 1024 * 1024 * 1024,
 		lru:      list.New(),
+		inodes:   make(map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]),
 		items:    make(map[CacheKey]*list.Element),
 	}
 
 	return dc, nil
 }
 
-func (c *DiskCache) getPath(key CacheKey) string {
-	shard := fmt.Sprintf("%02x", key.InodeID%256)
-	fileName := fmt.Sprintf("%d_%d", key.InodeID, key.Offset)
+func (c *DiskCache) getPath(inodeID fuseops.InodeID, physicalOffset uint64) string {
+	shard := fmt.Sprintf("%02x", inodeID%256)
+	fileName := fmt.Sprintf("%d_%d", inodeID, physicalOffset)
 	return filepath.Join(c.basePath, shard, fileName)
 }
 
@@ -70,11 +79,9 @@ func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte) err
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	key := CacheKey{InodeID: inodeID, Offset: offset}
 	size := int64(len(data))
-	path := c.getPath(key)
+	path := c.getPath(inodeID, offset)
 
-	// Write to temp file first
 	tmpPath := path + ".tmp"
 	f, err := os.Create(tmpPath)
 	if err != nil {
@@ -93,50 +100,81 @@ func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte) err
 		return err
 	}
 
-	// Update Metadata/LRU
-	el, exists := c.items[key]
-	if exists {
-		entry := el.Value.(*CacheEntry)
-		c.CurSize -= entry.Size
-		entry.Size = size
-		entry.AccessTime = time.Now()
-		c.lru.MoveToFront(el)
-	} else {
-		entry := &CacheEntry{
-			Key:        key,
-			Size:       size,
-			AccessTime: time.Now(),
-			OnDisk:     true,
-		}
-		el = c.lru.PushFront(entry)
-		c.items[key] = el
-	}
-	c.CurSize += size
+	// For Put, logical == physical
+	c.addEntryLocked(inodeID, offset, offset, size, time.Now())
 
 	c.evictIfNeeded()
 	return nil
 }
 
+func (c *DiskCache) addEntryLocked(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, size int64, accessTime time.Time) {
+	// LRU is tracked per PHYSICAL file
+	pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
+
+	entry := &CacheEntry{
+		InodeID:        inodeID,
+		LogicalOffset:  logicalOffset,
+		PhysicalOffset: physicalOffset,
+		Size:           size,
+		AccessTime:     accessTime,
+	}
+
+	// Update Inode BTree (for finding logical ranges)
+	tr, ok := c.inodes[inodeID]
+	if !ok {
+		tr = btree.NewBTreeG[*CacheEntry](cacheEntryLess)
+		c.inodes[inodeID] = tr
+	}
+	tr.Set(entry)
+
+	// Update LRU (shared for all logical entries pointing to same physical file)
+	if el, exists := c.items[pKey]; exists {
+		oldEntry := el.Value.(*CacheEntry)
+		if accessTime.After(oldEntry.AccessTime) {
+			oldEntry.AccessTime = accessTime
+			c.lru.MoveToFront(el)
+		}
+	} else {
+		el := c.lru.PushFront(entry)
+		c.items[pKey] = el
+		c.CurSize += size // Initial size of the physical file
+	}
+}
+
 func (c *DiskCache) Get(inodeID fuseops.InodeID, offset uint64, out []byte) (int, error) {
 	c.mu.Lock()
-	key := CacheKey{InodeID: inodeID, Offset: offset}
-	el, exists := c.items[key]
-	if exists {
-		c.lru.MoveToFront(el)
-		el.Value.(*CacheEntry).AccessTime = time.Now()
+	tr, ok := c.inodes[inodeID]
+	if !ok {
+		c.mu.Unlock()
+		return 0, os.ErrNotExist
 	}
+
+	var bestEntry *CacheEntry
+	tr.Descend(&CacheEntry{LogicalOffset: offset}, func(item *CacheEntry) bool {
+		if item.LogicalOffset <= offset && item.LogicalOffset+uint64(item.Size) > offset {
+			bestEntry = item
+		}
+		return false
+	})
+
+	if bestEntry == nil {
+		c.mu.Unlock()
+		return 0, os.ErrNotExist
+	}
+
+	pKey := CacheKey{InodeID: inodeID, Offset: bestEntry.PhysicalOffset}
+	el := c.items[pKey]
+	c.lru.MoveToFront(el)
+	bestEntry.AccessTime = time.Now()
+
+	path := c.getPath(inodeID, bestEntry.PhysicalOffset)
 	c.mu.Unlock()
 
-	// If we don't track it in LRU (e.g. after restart before scan),
-	// we still try to read it. If it exists, we add it to LRU.
-
-	path := c.getPath(key)
 	f, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) && exists {
-			// Inconsistency: LRU says yes, Disk says no. Fix LRU.
+		if os.IsNotExist(err) {
 			c.mu.Lock()
-			if el, ok := c.items[key]; ok {
+			if el, ok := c.items[pKey]; ok {
 				c.removeEntry(el)
 			}
 			c.mu.Unlock()
@@ -145,95 +183,78 @@ func (c *DiskCache) Get(inodeID fuseops.InodeID, offset uint64, out []byte) (int
 	}
 	defer f.Close()
 
-	n, err := io.ReadFull(f, out)
-
-	// If we successfully read, ensure it's in LRU
-	if err == nil || err == io.ErrUnexpectedEOF {
-		c.mu.Lock()
-		if _, ok := c.items[key]; !ok {
-			// Add to LRU
-			entry := &CacheEntry{
-				Key:        key,
-				Size:       int64(n),
-				AccessTime: time.Now(),
-				OnDisk:     true,
-			}
-			c.items[key] = c.lru.PushFront(entry)
-			c.items[key] = c.lru.PushFront(entry)
-			c.CurSize += int64(n)
-			// Potentially redundant size addition if we didn't track it initially?
-			// On restart we should ideally scan or trust persistence.
-		}
-		c.mu.Unlock()
+	fileOffset := int64(offset - bestEntry.PhysicalOffset)
+	if _, err := f.Seek(fileOffset, io.SeekStart); err != nil {
+		return 0, err
 	}
 
+	n, err := io.ReadFull(f, out)
+	if err == io.ErrUnexpectedEOF {
+		err = nil
+	}
 	return n, err
 }
 
 func (c *DiskCache) evictIfNeeded() {
-	// Accuracy +- 5%
 	limit := c.MaxSize
 	if c.CurSize <= limit {
 		return
 	}
 
-	// Evict until we are below 95% of limit to avoid thrashing
 	target := int64(float64(limit) * 0.95)
 
 	for c.CurSize > target && c.lru.Len() > 0 {
 		el := c.lru.Back()
-		entry := el.Value.(*CacheEntry)
-
-		// Remove file
-		path := c.getPath(entry.Key)
-		os.Remove(path) // Ignore error, maybe already gone
-
 		c.removeEntry(el)
 	}
 }
 
 func (c *DiskCache) removeEntry(el *list.Element) {
 	entry := el.Value.(*CacheEntry)
+
+	// Remove physical file
+	path := c.getPath(entry.InodeID, entry.PhysicalOffset)
+	os.Remove(path)
+
 	c.CurSize -= entry.Size
-	delete(c.items, entry.Key)
+	pKey := CacheKey{InodeID: entry.InodeID, Offset: entry.PhysicalOffset}
+	delete(c.items, pKey)
+
+	if tr, ok := c.inodes[entry.InodeID]; ok {
+		tr.Delete(entry)
+		if tr.Len() == 0 {
+			delete(c.inodes, entry.InodeID)
+		}
+	}
+
 	c.lru.Remove(el)
 }
 
-// RestoreState populates the LRU map from a list of known existing buffers.
-// This should be called during LoadCache from persistence.
-func (c *DiskCache) RestoreState(inodeID fuseops.InodeID, offset uint64, size int64, accessTime time.Time) {
+func (c *DiskCache) RestoreState(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, size int64, accessTime time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	key := CacheKey{InodeID: inodeID, Offset: offset}
-	if _, exists := c.items[key]; exists {
-		return
-	}
-
-	entry := &CacheEntry{
-		Key:        key,
-		Size:       size,
-		AccessTime: accessTime,
-		OnDisk:     true,
-	}
-
-	// We append to Back because RestoreState handles old items.
-	// However, if we don't have stored access time, we assume they are 'old' relative to now?
-	// If AccessTime is zero, use Now? No, that would make them 'new'.
-	// Construct the list. Sorted by AccessTime outside?
-	// Simple approach: PushBack.
-	el := c.lru.PushBack(entry)
-	c.items[key] = el
-	c.CurSize += size
+	c.addEntryLocked(inodeID, logicalOffset, physicalOffset, size, accessTime)
 }
 
-func (c *DiskCache) GetMeta(inodeID fuseops.InodeID, offset uint64) (time.Time, bool) {
+func (c *DiskCache) GetMeta(inodeID fuseops.InodeID, logicalOffset uint64) (time.Time, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	key := CacheKey{InodeID: inodeID, Offset: offset}
-	if el, exists := c.items[key]; exists {
-		return el.Value.(*CacheEntry).AccessTime, true
+	tr, ok := c.inodes[inodeID]
+	if !ok {
+		return time.Time{}, false
+	}
+
+	var found *CacheEntry
+	tr.Descend(&CacheEntry{LogicalOffset: logicalOffset}, func(item *CacheEntry) bool {
+		if item.LogicalOffset == logicalOffset {
+			found = item
+		}
+		return false
+	})
+
+	if found != nil {
+		return found.AccessTime, true
 	}
 	return time.Time{}, false
 }
