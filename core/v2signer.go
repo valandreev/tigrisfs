@@ -35,9 +35,7 @@ import (
 //var errInvalidMethod = errors.New("v2 signer does not handle HTTP POST")
 
 const (
-	signatureVersion = "2"
-	signatureMethod  = "HmacSHA1"
-	timeFormat       = "Mon, 2 Jan 2006 15:04:05 +0000"
+	timeFormat = "Mon, 2 Jan 2006 15:04:05 +0000"
 )
 
 var subresources = []string{

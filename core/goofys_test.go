@@ -795,10 +795,6 @@ func (s *GoofysTest) TestWriteManyFilesFile(t *C) {
 	files.Wait()
 }
 
-func (s *GoofysTest) testWriteFileNonAlign(t *C) {
-	s.testWriteFile(t, "testWriteFileNonAlign", 6*1024*1024, 128*1024+1)
-}
-
 func (s *GoofysTest) TestReadRandom(t *C) {
 	size := int64(21 * 1024 * 1024)
 

@@ -26,10 +26,8 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/user"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -50,34 +48,6 @@ import (
 )
 
 const PerTestTimeout = 10 * time.Minute
-
-func currentUid() uint32 {
-	usr, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
-
-	uid, err := strconv.ParseUint(usr.Uid, 10, 32)
-	if err != nil {
-		panic(err)
-	}
-
-	return uint32(uid)
-}
-
-func currentGid() uint32 {
-	usr, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
-
-	gid, err := strconv.ParseUint(usr.Gid, 10, 32)
-	if err != nil {
-		panic(err)
-	}
-
-	return uint32(gid)
-}
 
 type GoofysTest struct {
 	fs        *Goofys
@@ -251,7 +221,7 @@ func selectTestConfig(flags *cfg.FlagStorage) (conf cfg.S3Config) {
 	return
 }
 
-func (s *GoofysTest) selectTestConfig(t *C, flags *cfg.FlagStorage) (conf cfg.S3Config) {
+func (s *GoofysTest) selectTestConfig(_ *C, flags *cfg.FlagStorage) (conf cfg.S3Config) {
 	conf = selectTestConfig(flags)
 	s.emulator = hasEnv("EMULATOR")
 	return
@@ -468,7 +438,7 @@ func (s *GoofysTest) setupDefaultEnv(t *C, prefix string) {
 	s.setupBlobs(s.cloud, t, s.env)
 }
 
-func (s *GoofysTest) setUpTestTimeout(t *C, timeout time.Duration) {
+func (s *GoofysTest) setUpTestTimeout(_ *C, timeout time.Duration) {
 	if s.timeout != nil {
 		close(s.timeout)
 	}
@@ -525,7 +495,8 @@ func (s *GoofysTest) SetUpTest(t *C) {
 
 	cloud := os.Getenv("CLOUD")
 
-	if cloud == "s3" {
+	switch cloud {
+	case "s3":
 		conf := s.selectTestConfig(t, flags)
 		flags.Backend = &conf
 
@@ -548,7 +519,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		_, err = s3.ListBuckets(nil)
 		t.Assert(err, IsNil)
 
-	} else if cloud == "gcs" {
+	case "gcs":
 		conf := s.selectTestConfig(t, flags)
 		flags.Backend = &conf
 
@@ -556,7 +527,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		s.cloud, err = NewGCS3(bucket, flags, &conf)
 		t.Assert(s.cloud, NotNil)
 		t.Assert(err, IsNil)
-	} else if cloud == "azblob" {
+	case "azblob":
 		config, err := cfg.AzureBlobConfig(os.Getenv("ENDPOINT"), "", "blob")
 		t.Assert(err, IsNil)
 
@@ -607,7 +578,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		s.cloud, err = NewAZBlob(bucket, &config)
 		t.Assert(err, IsNil)
 		t.Assert(s.cloud, NotNil)
-	} else if cloud == "adlv1" {
+	case "adlv1":
 		cred := azureauth.NewClientCredentialsConfig(
 			os.Getenv("ADLV1_CLIENT_ID"),
 			os.Getenv("ADLV1_CLIENT_CREDENTIAL"),
@@ -626,7 +597,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		s.cloud, err = NewADLv1(bucket, flags, &config)
 		t.Assert(err, IsNil)
 		t.Assert(s.cloud, NotNil)
-	} else if cloud == "adlv2" {
+	case "adlv2":
 		var err error
 		var auth autorest.Authorizer
 
@@ -655,7 +626,7 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		s.cloud, err = NewADLv2(bucket, flags, &config)
 		t.Assert(err, IsNil)
 		t.Assert(s.cloud, NotNil)
-	} else {
+	default:
 		t.Fatal("Unsupported backend")
 	}
 

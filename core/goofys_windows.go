@@ -800,9 +800,10 @@ func (fs *GoofysWin) Readdir(path string,
 		attr := inode.InflateAttributes()
 		makeFuseAttributes(&attr, st)
 		inode.mu.Unlock()
-		if dh.lastExternalOffset == 0 {
+		switch dh.lastExternalOffset {
+		case 0:
 			name = "."
-		} else if dh.lastExternalOffset == 1 {
+		case 1:
 			name = ".."
 		}
 		if !fill(name, st, int64(dh.lastExternalOffset)) {

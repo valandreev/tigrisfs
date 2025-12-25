@@ -240,7 +240,7 @@ func azureDefaultSubscription() (*cli.Subscription, error) {
 	return nil, fmt.Errorf("Unable to find default azure subscription id")
 }
 
-func azureAccountsClient(account string) (azblob.AccountsClient, error) {
+func azureAccountsClient() (azblob.AccountsClient, error) {
 	var c azblob.AccountsClient
 
 	defaultSubscription, err := azureDefaultSubscription()
@@ -347,7 +347,7 @@ func AzureBlobConfig(endpoint string, location string, storageType string) (conf
 
 	if endpoint == "" || key == "" {
 		var client azblob.AccountsClient
-		client, err = azureAccountsClient(account)
+		client, err = azureAccountsClient()
 		if err == nil {
 			var resourceGroup string
 			var endpoints *azblob.Endpoints
@@ -359,9 +359,10 @@ func AzureBlobConfig(endpoint string, location string, storageType string) (conf
 					return
 				}
 			} else {
-				if storageType == "blob" {
+				switch storageType {
+				case "blob":
 					endpoint = *endpoints.Blob
-				} else if storageType == "dfs" {
+				case "dfs":
 					endpoint = *endpoints.Dfs
 				}
 			}

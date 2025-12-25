@@ -329,7 +329,8 @@ func (l *BufferList) requeueSplit(left *FileBuffer) {
 	if left.state != BUF_CLEAN {
 		l.uncleanCount++
 	}
-	if left.state == BUF_DIRTY {
+	switch left.state {
+	case BUF_DIRTY:
 		if l.dirtyParts == nil {
 			l.dirtyParts = make(map[uint64]*dirtyPart)
 		}
@@ -339,7 +340,7 @@ func (l *BufferList) requeueSplit(left *FileBuffer) {
 		if lbound == rbound {
 			l.referenceDirtyPart(lbound)
 		}
-	} else if left.state == BUF_CLEAN || left.state == BUF_FLUSHED_FULL {
+	case BUF_CLEAN, BUF_FLUSHED_FULL:
 		// we only have to add the left buffer, right remains as is
 		l.helpers.QueueCleanBuffer(left)
 	}
@@ -365,10 +366,11 @@ func (l *BufferList) SetState(offset, size uint64, ids map[uint64]bool, state Bu
 
 func (l *BufferList) SetFlushedClean() {
 	ascendChange(&l.at, 0, func(end uint64, b *FileBuffer) (cont bool, chg bool) {
-		if b.state == BUF_FL_CLEARED {
+		switch b.state {
+		case BUF_FL_CLEARED:
 			l.delete(b)
 			return true, true
-		} else if b.state == BUF_FLUSHED_FULL || b.state == BUF_FLUSHED_CUT {
+		case BUF_FLUSHED_FULL, BUF_FLUSHED_CUT:
 			l.unqueue(b)
 			b.dirtyID = 0
 			b.state = BUF_CLEAN

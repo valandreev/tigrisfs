@@ -36,7 +36,7 @@ func (s *GoofysTest) SetUpSuite(t *C) {
 	}
 }
 
-func (s *GoofysTest) mountCommon(t *C, mountPoint string, sameProc bool) {
+func (s *GoofysTest) mountCommon(t *C, mountPoint string, _ bool) {
 	os.Remove(mountPoint)
 	s.fs.flags.MountPoint = mountPoint
 	mfs, err := mountFuseFS(s.fs)
@@ -54,7 +54,7 @@ func (s *GoofysTest) mountCommon(t *C, mountPoint string, sameProc bool) {
 	s.mfs = mfs
 }
 
-func (s *GoofysTest) umount(t *C, mountPoint string) {
+func (s *GoofysTest) umount(_ *C, mountPoint string) {
 	s.mfs.Unmount()
 	s.mfs = nil
 }

@@ -40,10 +40,6 @@ func (s *GoofysTest) mount(t *C, mountPoint string) {
 	s.mountCommon(t, mountPoint, false)
 }
 
-func (s *GoofysTest) mountInside(t *C, mountPoint string) {
-	s.mountCommon(t, mountPoint, true)
-}
-
 func (s *GoofysTest) TestIssue69Fuse(t *C) {
 	s.fs.flags.StatCacheTTL = 0
 

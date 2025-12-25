@@ -91,9 +91,10 @@ func (r *MultiReader) Read(buf []byte) (n int, err error) {
 }
 
 func (r *MultiReader) Seek(offset int64, whence int) (newOffset int64, err error) {
-	if whence == io.SeekEnd {
+	switch whence {
+	case io.SeekEnd:
 		offset += int64(r.size)
-	} else if whence == io.SeekCurrent {
+	case io.SeekCurrent:
 		offset += int64(r.pos)
 	}
 	if offset > int64(r.size) {

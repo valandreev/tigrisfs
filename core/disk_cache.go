@@ -129,7 +129,7 @@ func (c *DiskCache) addEntryLocked(inodeID fuseops.InodeID, logicalOffset, physi
 	// Update Inode BTree (for finding logical ranges)
 	tr, ok := c.inodes[inodeID]
 	if !ok {
-		tr = btree.NewBTreeG[*CacheEntry](cacheEntryLess)
+		tr = btree.NewBTreeG(cacheEntryLess)
 		c.inodes[inodeID] = tr
 	}
 	old, replaced := tr.Set(entry)

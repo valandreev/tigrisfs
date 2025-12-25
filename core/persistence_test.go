@@ -95,9 +95,10 @@ func TestPersistence(t *testing.T) {
 
 	var rf1, rd1 *Inode
 	for _, child := range root2.dir.Children {
-		if child.Name == "file1" {
+		switch child.Name {
+		case "file1":
 			rf1 = child
-		} else if child.Name == "dir1" {
+		case "dir1":
 			rd1 = child
 		}
 	}
