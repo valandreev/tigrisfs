@@ -188,7 +188,13 @@ func (l *BufferList) EvictFromMemory(buf *FileBuffer) (allocated int64, deleted 
 	}
 	buf.ptr = nil
 	buf.data = nil
-	if buf.onDisk && !l.helpers.IsWriteback() {
+
+	// For on-disk buffers, keep them in BTree for later reload
+	if buf.onDisk {
+		// During writeback, don't merge but keep the buffer for later reload
+		if l.helpers.IsWriteback() {
+			return
+		}
 		// Try to merge it with the previous buffer
 		var prev *FileBuffer
 		l.at.Descend(buf.offset, func(end uint64, b *FileBuffer) bool {
@@ -209,7 +215,12 @@ func (l *BufferList) EvictFromMemory(buf *FileBuffer) (allocated int64, deleted 
 			l.queue(buf)
 			deleted = true
 		}
-	} else if buf.state == BUF_CLEAN {
+		// Whether merge succeeded or not, buffer stays in BTree with data=nil
+		return
+	}
+
+	// For non-cached buffers, we can delete them
+	if buf.state == BUF_CLEAN {
 		l.unqueue(buf)
 		l.at.Delete(buf.offset + buf.length)
 		deleted = true

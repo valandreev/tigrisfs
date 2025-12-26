@@ -86,6 +86,16 @@ func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte) err
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Check if this exact range is already cached
+	pKey := CacheKey{InodeID: inodeID, Offset: offset}
+	if el, exists := c.items[pKey]; exists {
+		// Update access time only and move to front of LRU
+		entry := el.Value.(*CacheEntry)
+		entry.AccessTime = time.Now()
+		c.lru.MoveToFront(el)
+		return nil
+	}
+
 	size := int64(len(data))
 	path := c.getPath(inodeID, offset)
 
@@ -142,14 +152,16 @@ func (c *DiskCache) addEntryLocked(inodeID fuseops.InodeID, logicalOffset, physi
 
 	// Update LRU (shared for all logical entries pointing to same physical file)
 	if el, exists := c.items[pKey]; exists {
+		// Physical file already exists - just update access time
+		// Don't update size as it would double-count when multiple logical
+		// entries (e.g., after buffer splits) point to the same physical file
 		oldEntry := el.Value.(*CacheEntry)
-		c.CurSize -= oldEntry.Size
-		c.CurSize += size
-		el.Value = entry
 		if accessTime.After(oldEntry.AccessTime) {
+			oldEntry.AccessTime = accessTime
 			c.lru.MoveToFront(el)
 		}
 	} else {
+		// New physical file - add to LRU
 		el := c.lru.PushFront(entry)
 		c.items[pKey] = el
 		c.CurSize += size // Initial size of the physical file

@@ -323,8 +323,9 @@ func (inode *Inode) LoadRange(offset, size uint64, readAheadSize uint64, ignoreM
 		inode.loadFromServer(readRanges, readAheadSize, ignoreMemoryLimit)
 	}
 
+	var diskRanges []Range
 	if inode.fs.flags.CachePath != "" {
-		diskRanges := inode.buffers.AddLoadingFromDisk(offset, size)
+		diskRanges = inode.buffers.AddLoadingFromDisk(offset, size)
 		if len(diskRanges) > 0 {
 			allocated, err := inode.loadFromDisk(diskRanges)
 			// Correct memory usage without the inode lock
@@ -341,8 +342,8 @@ func (inode *Inode) LoadRange(offset, size uint64, readAheadSize uint64, ignoreM
 		}
 	}
 
-	// Wait for the data to load
-	if len(readRanges) > 0 || loading {
+	// Wait for the data to load (from server or disk)
+	if len(readRanges) > 0 || len(diskRanges) > 0 || loading {
 		for {
 			_, _, err := inode.buffers.GetData(offset, size, false)
 			switch err {
