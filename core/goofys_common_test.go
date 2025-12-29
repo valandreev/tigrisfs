@@ -19,11 +19,9 @@
 package core
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"runtime/debug"
@@ -70,14 +68,6 @@ type GoofysTest struct {
 }
 
 var _ = Suite(&GoofysTest{})
-
-func logOutput(t *C, tag string, r io.ReadCloser) {
-	in := bufio.NewScanner(r)
-
-	for in.Scan() {
-		t.Log(tag, in.Text())
-	}
-}
 
 func waitFor(t *C, addr string) (err error) {
 	// wait for it to listen on port

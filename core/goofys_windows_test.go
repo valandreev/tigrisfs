@@ -54,7 +54,7 @@ func (s *GoofysTest) mountCommon(t *C, mountPoint string, _ bool) {
 	s.mfs = mfs
 }
 
-func (s *GoofysTest) umount(_ *C, mountPoint string) {
+func (s *GoofysTest) umount(_ *C, _ string) {
 	s.mfs.Unmount()
 	s.mfs = nil
 }

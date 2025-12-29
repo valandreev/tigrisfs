@@ -220,11 +220,12 @@ func (l *BufferList) EvictFromMemory(buf *FileBuffer) (allocated int64, deleted 
 	}
 
 	// For non-cached buffers, we can delete them
-	if buf.state == BUF_CLEAN {
+	switch buf.state {
+	case BUF_CLEAN:
 		l.unqueue(buf)
 		l.at.Delete(buf.offset + buf.length)
 		deleted = true
-	} else if buf.state == BUF_FLUSHED_FULL {
+	case BUF_FLUSHED_FULL:
 		// A flushed buffer can be removed at a cost of finalizing multipart upload
 		// to read it back later. However it's likely not a problem if we're uploading
 		// a large file because we may never need to read it back.
