@@ -40,7 +40,7 @@ type FileHandle struct {
 // On Linux and MacOS, IOV_MAX = 1024
 const (
 	IOV_MAX            = 1024
-	READ_BUF_SIZE      = 4096 * 1024
+	READ_BUF_SIZE      = 8192 * 1024
 	MAX_FLUSH_PRIORITY = 3
 )
 
