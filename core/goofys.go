@@ -369,8 +369,8 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 	}
 
 	fs.bufferPool = NewBufferPool(int64(flags.MemoryLimit), uint64(flags.GCInterval)<<20)
-	fs.bufferPool.FreeSomeCleanBuffers = func(size int64) (int64, bool) {
-		return fs.FreeSomeCleanBuffers(size)
+	fs.bufferPool.FreeSomeCleanBuffers = func(size int64, noWait bool) (int64, bool) {
+		return fs.FreeSomeCleanBuffers(size, noWait)
 	}
 
 	fs.nextInodeID = fuseops.RootInodeID + 1
@@ -565,7 +565,7 @@ func (fs *Goofys) StatPrinter() {
 }
 
 // Try to reclaim some clean buffers
-func (fs *Goofys) FreeSomeCleanBuffers(origSize int64) (int64, bool) {
+func (fs *Goofys) FreeSomeCleanBuffers(origSize int64, noWait bool) (int64, bool) {
 	freed := int64(0)
 	// Free at least 5 MB
 	size := origSize
@@ -597,15 +597,76 @@ func (fs *Goofys) FreeSomeCleanBuffers(origSize int64) (int64, bool) {
 			break
 		}
 	}
+
+	if freed < size && fs.flags.Writeback && fs.diskCache != nil && fs.diskCache.CanWrite() {
+		freed += fs.ForceDiskFlush(size - freed)
+	}
+
 	haveDirty := fs.inodeQueue.Size() > 0
-	if freed < origSize && haveDirty {
+	if freed < origSize && haveDirty && !noWait {
 		fs.bufferPool.mu.Unlock()
 		atomic.AddInt32(&fs.wantFree, 1)
 		fs.WakeupFlusherAndWait(true)
 		atomic.AddInt32(&fs.wantFree, -1)
 		fs.bufferPool.mu.Lock()
+		if atomic.LoadInt64(&fs.activeFlushers) == 0 {
+			haveDirty = false
+		}
 	}
 	return freed, haveDirty
+}
+
+func (fs *Goofys) ForceDiskFlush(size int64) int64 {
+	freed := int64(0)
+	var nextQueueID uint64
+	// Limit iterations to avoid locking up too long if we can't find anything
+	iterations := 0
+	maxIterations := fs.inodeQueue.Size() * 2
+	if maxIterations == 0 {
+		return 0
+	}
+
+	for freed < size && iterations < maxIterations {
+		iterations++
+		inodeID, nID := fs.inodeQueue.Next(nextQueueID)
+		if inodeID == 0 {
+			break
+		}
+		nextQueueID = nID
+
+		fs.mu.RLock()
+		inode := fs.inodes[fuseops.InodeID(inodeID)]
+		fs.mu.RUnlock()
+
+		if inode == nil {
+			continue
+		}
+
+		inode.mu.Lock()
+		// Scan for dirty buffers that are NOT on disk
+		inode.buffers.Ascend(0, func(end uint64, b *FileBuffer) (cont bool, changed bool) {
+			if freed >= size {
+				return false, false
+			}
+			// We look for BUF_DIRTY buffers that are not yet on disk
+			if b.state == BUF_DIRTY && !b.onDisk && b.ptr != nil && !inode.IsRangeLocked(b.offset, b.length, false) {
+				// Synchronous write to disk cache
+				err := fs.diskCache.Put(inode.Id, b.offset, b.data, true)
+				if err == nil {
+					b.onDisk = true
+					// Now we can evict it effectively
+					allocated, _ := inode.buffers.EvictFromMemory(b)
+					if allocated != 0 {
+						_ = fs.bufferPool.UseUnlocked(allocated, false)
+						freed -= allocated // allocated is negative
+					}
+				}
+			}
+			return true, false
+		})
+		inode.mu.Unlock()
+	}
+	return freed
 }
 
 // FIXME: Implement disk cache size limit, add another btree.Map-based
@@ -675,6 +736,7 @@ func (fs *Goofys) Flusher() {
 	priority := 1
 	for atomic.LoadInt32(&fs.shutdown) == 0 {
 		fs.flusherMu.Lock()
+		fs.flusherCond.Broadcast()
 		if fs.flushPending == 0 {
 			fs.flusherCond.Wait()
 		}
