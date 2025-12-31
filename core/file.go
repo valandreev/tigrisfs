@@ -176,7 +176,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 	}
 
 	onDisk := false
-	if fh.inode.fs.flags.Writeback {
+	if fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil {
 		errCache := fh.inode.fs.diskCache.Put(fh.inode.Id, uint64(offset), data)
 		if errCache == nil {
 			onDisk = true

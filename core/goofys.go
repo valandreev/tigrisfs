@@ -300,7 +300,7 @@ func NewGoofys(ctx context.Context, bucketName string, flags *cfg.FlagStorage) (
 	return newGoofys(ctx, bucketName, flags, NewBackend)
 }
 
-func newGoofys(_ context.Context, bucket string, flags *cfg.FlagStorage,
+func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 	newBackend func(string, *cfg.FlagStorage) (StorageBackend, error),
 ) (*Goofys, error) {
 	// Set up the basic struct.
@@ -407,6 +407,12 @@ func newGoofys(_ context.Context, bucket string, flags *cfg.FlagStorage,
 			if err := fs.LoadCache(); err != nil {
 				mainLog.Warnf("Failed to load persistent cache: %v", err)
 			}
+			// Remove files from disk that are not in metadata
+			fs.diskCache.CleanupOrphanedFiles()
+			// Enforce limit after loading potentially larger state
+			fs.diskCache.EnsureSizeLimit()
+			// Start background monitor
+			fs.diskCache.StartMonitor(ctx)
 		}
 	}
 
@@ -600,7 +606,7 @@ func (fs *Goofys) tryEvictToDisk(inode *Inode, buf *FileBuffer, toFs *int) {
 		if *toFs == -1 {
 			*toFs = 1
 		}
-		if *toFs > 0 {
+		if *toFs > 0 && fs.diskCache != nil {
 			// Evict to disk
 			err := fs.diskCache.Put(inode.Id, buf.offset, buf.data)
 			if err != nil {

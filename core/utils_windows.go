@@ -17,6 +17,8 @@ package core
 
 import (
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -24,3 +26,18 @@ const (
 	XATTR_REPLACE = 0x2
 	ENOATTR       = syscall.ENODATA
 )
+
+func GetDiskFreeSpace(path string) (uint64, uint64, error) {
+	var freeBytesAvailable, totalNumberOfBytes, totalNumberOfFreeBytes uint64
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	err = windows.GetDiskFreeSpaceEx(p, &freeBytesAvailable, &totalNumberOfBytes, &totalNumberOfFreeBytes)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return freeBytesAvailable, totalNumberOfBytes, nil
+}

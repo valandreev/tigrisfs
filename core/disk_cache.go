@@ -2,6 +2,7 @@ package core
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -42,6 +43,9 @@ type DiskCache struct {
 	items map[CacheKey]*list.Element
 	// Back-index to find all logical entries for a physical file
 	logicalOffsets map[CacheKey]map[uint64]bool
+
+	DiskUsageChecker func(path string) (uint64, uint64, error)
+	Disabled         bool
 }
 
 func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
@@ -65,12 +69,13 @@ func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
 	}
 
 	dc := &DiskCache{
-		basePath:       dataPath,
-		MaxSize:        int64(maxSizeGB) * 1024 * 1024 * 1024,
-		lru:            list.New(),
-		inodes:         make(map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]),
-		items:          make(map[CacheKey]*list.Element),
-		logicalOffsets: make(map[CacheKey]map[uint64]bool),
+		basePath:         dataPath,
+		MaxSize:          int64(maxSizeGB) * 1024 * 1024 * 1024,
+		lru:              list.New(),
+		inodes:           make(map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]),
+		items:            make(map[CacheKey]*list.Element),
+		logicalOffsets:   make(map[CacheKey]map[uint64]bool),
+		DiskUsageChecker: GetDiskFreeSpace,
 	}
 
 	return dc, nil
@@ -84,6 +89,10 @@ func (c *DiskCache) getPath(inodeID fuseops.InodeID, physicalOffset uint64) stri
 
 func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte) error {
 	c.mu.Lock()
+	if c.Disabled {
+		c.mu.Unlock()
+		return nil
+	}
 	defer c.mu.Unlock()
 
 	// Check if this exact range is already cached
@@ -216,16 +225,124 @@ func (c *DiskCache) Get(inodeID fuseops.InodeID, logicalOffset, physicalOffset u
 }
 
 func (c *DiskCache) evictIfNeeded() {
-	limit := c.MaxSize
-	if c.CurSize <= limit {
+	c.evictToSize(c.MaxSize)
+}
+
+func (c *DiskCache) evictToSize(targetSize int64) {
+	for c.CurSize > targetSize && c.lru.Len() > 0 {
+		el := c.lru.Back()
+		c.removeEntry(el)
+	}
+}
+
+// StartMonitor periodically checks disk usage and evicts if free space is low.
+func (c *DiskCache) StartMonitor(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				c.checkDiskSpace()
+			}
+		}
+	}()
+}
+
+func (c *DiskCache) checkDiskSpace() {
+	if c.DiskUsageChecker == nil {
 		return
 	}
 
-	target := int64(float64(limit) * 0.95)
+	free, total, err := c.DiskUsageChecker(c.basePath)
+	if err != nil {
+		return // Ignore errors, retry next time
+	}
 
-	for c.CurSize > target && c.lru.Len() > 0 {
-		el := c.lru.Back()
-		c.removeEntry(el)
+	// User req: "always remain 5-10% free space"
+	targetFree := uint64(float64(total) * 0.10)
+	criticalFree := uint64(float64(total) * 0.05)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if free < targetFree {
+		if free < criticalFree {
+			if !c.Disabled {
+				mainLog.Warnf("Disk cache disabled: free space (%.2f GB) is below 5%% of total (%.2f GB)", float64(free)/1e9, float64(total)/1e9)
+				c.Disabled = true
+			}
+			// If free space is very low, evict everything
+			c.evictToSize(0)
+		} else {
+			// We need to free up (targetFree - free) bytes
+			needed := int64(targetFree - free)
+
+			// Reduce cache size by 'needed' amount, but don't go below 0
+			newTarget := c.CurSize - needed
+			if newTarget < 0 {
+				newTarget = 0
+			}
+
+			// Also enforce MaxSize just in case
+			if newTarget > c.MaxSize {
+				newTarget = c.MaxSize
+			}
+
+			c.evictToSize(newTarget)
+		}
+	} else if c.Disabled && free > targetFree {
+		mainLog.Infof("Disk cache re-enabled: free space (%.2f GB) is above 10%%", float64(free)/1e9)
+		c.Disabled = false
+	}
+}
+
+// EnsureSizeLimit checks if current size > MaxSize and evicts if needed.
+// This is useful at startup if the configured size has changed.
+func (c *DiskCache) EnsureSizeLimit() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.evictIfNeeded()
+}
+
+// CleanupOrphanedFiles deletes files from disk that are not in the metadata.
+func (c *DiskCache) CleanupOrphanedFiles() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for i := 0; i < 256; i++ {
+		shardPath := filepath.Join(c.basePath, fmt.Sprintf("%02x", i))
+		files, err := os.ReadDir(shardPath)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if f.IsDir() {
+				continue
+			}
+			name := f.Name()
+			if filepath.Ext(name) == ".tmp" {
+				os.Remove(filepath.Join(shardPath, name))
+				continue
+			}
+
+			var inodeID uint64
+			var physicalOffset uint64
+			n, err := fmt.Sscanf(name, "%d_%d", &inodeID, &physicalOffset)
+			if err != nil || n != 2 {
+				// Not our file, delete it
+				os.Remove(filepath.Join(shardPath, name))
+				continue
+			}
+
+			pKey := CacheKey{InodeID: fuseops.InodeID(inodeID), Offset: physicalOffset}
+			if _, exists := c.items[pKey]; !exists {
+				// Orphaned file
+				os.Remove(filepath.Join(shardPath, name))
+			}
+		}
 	}
 }
 
