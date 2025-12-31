@@ -44,7 +44,7 @@ type BufferPool struct {
 	gcPrev     uint64
 	gcInterval uint64
 
-	FreeSomeCleanBuffers func(size int64) (int64, bool)
+	FreeSomeCleanBuffers func(size int64, noWait bool) (int64, bool)
 }
 
 func NewBufferPool(limit int64, gcInterval uint64) *BufferPool {
@@ -109,16 +109,21 @@ func (pool *BufferPool) UseUnlocked(size int64, ignoreMemoryLimit bool) error {
 
 	if size > 0 && newSize > pool.max {
 		// Try to free clean buffers, then flush dirty buffers
-		freed, canFreeMoreAsync := pool.FreeSomeCleanBuffers(newSize - pool.max)
+		freed, canFreeMoreAsync := pool.FreeSomeCleanBuffers(newSize-pool.max, ignoreMemoryLimit)
 		bufferLog.Debugf("Freed %v, now: %v/%v", freed, newSize, pool.max)
 		for atomic.LoadInt64(&pool.cur) > pool.max && canFreeMoreAsync && !ignoreMemoryLimit {
-			freed, canFreeMoreAsync = pool.FreeSomeCleanBuffers(atomic.LoadInt64(&pool.cur) - pool.max)
+			freed, canFreeMoreAsync = pool.FreeSomeCleanBuffers(atomic.LoadInt64(&pool.cur)-pool.max, ignoreMemoryLimit)
 			bufferLog.Debugf("Freed %v, now: %v/%v", freed, atomic.LoadInt64(&pool.cur), pool.max)
 		}
 		if atomic.LoadInt64(&pool.cur) > pool.max && !ignoreMemoryLimit {
 			debug.FreeOSMemory()
 			pool.recomputeBufferLimit()
 			if atomic.LoadInt64(&pool.cur) > pool.max {
+				if canFreeMoreAsync {
+					// If we can free more (flusher is active), don't ENOMEM yet,
+					// let the caller retry or wait.
+					return nil
+				}
 				// we can't free anything else asynchronously, and we've made attempts to
 				// free memory AND correct our limits, yet we still can't allocate.
 				// it's likely that we are simply asking for too much

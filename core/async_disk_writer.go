@@ -7,22 +7,10 @@ type DiskWriteRequest struct {
 }
 
 func (fs *Goofys) AsyncDiskWrite(inode *Inode, offset uint64, data []byte) {
-	select {
-	case fs.diskWriteCh <- &DiskWriteRequest{
+	fs.diskWriteCh <- &DiskWriteRequest{
 		inode:  inode,
 		offset: offset,
 		data:   data,
-	}:
-	default:
-		// Channel is full, try to do it via a goroutine to not block
-		// Note: this might create many goroutines under heavy load, but better than blocking
-		go func() {
-			fs.diskWriteCh <- &DiskWriteRequest{
-				inode:  inode,
-				offset: offset,
-				data:   data,
-			}
-		}()
 	}
 }
 

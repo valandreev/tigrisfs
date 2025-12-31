@@ -579,7 +579,9 @@ func (fs *Goofys) FreeSomeCleanBuffers(origSize int64, noWait bool) (int64, bool
 		if cleanQueueID == 0 {
 			break
 		}
-		inode.mu.Lock()
+		if !inode.mu.TryLock() {
+			continue
+		}
 		toFs := -1
 		buf := inode.buffers.Get(cleanEnd)
 		// Never evict buffers flushed in an incomplete (last) part
@@ -609,9 +611,8 @@ func (fs *Goofys) FreeSomeCleanBuffers(origSize int64, noWait bool) (int64, bool
 		fs.WakeupFlusherAndWait(true)
 		atomic.AddInt32(&fs.wantFree, -1)
 		fs.bufferPool.mu.Lock()
-		if atomic.LoadInt64(&fs.activeFlushers) == 0 {
-			haveDirty = false
-		}
+		// Re-evaluate if we have dirty buffers after waiting
+		haveDirty = fs.inodeQueue.Size() > 0 || atomic.LoadInt64(&fs.activeFlushers) > 0
 	}
 	return freed, haveDirty
 }
@@ -642,7 +643,9 @@ func (fs *Goofys) ForceDiskFlush(size int64) int64 {
 			continue
 		}
 
-		inode.mu.Lock()
+		if !inode.mu.TryLock() {
+			continue
+		}
 		// Scan for dirty buffers that are NOT on disk
 		inode.buffers.Ascend(0, func(end uint64, b *FileBuffer) (cont bool, changed bool) {
 			if freed >= size {
@@ -780,6 +783,10 @@ func (fs *Goofys) Flusher() {
 				curPriorityOk = curPriorityOk || started
 			}
 		}
+		// Wake up anyone waiting for flushing attempt to complete
+		fs.flusherMu.Lock()
+		fs.flusherCond.Broadcast()
+		fs.flusherMu.Unlock()
 	}
 }
 

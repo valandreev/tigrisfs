@@ -46,6 +46,9 @@ type DiskCache struct {
 	// Files that cannot be evicted (e.g. dirty buffers)
 	pinned map[CacheKey]int
 
+	// In-flight writes to deduplicate concurrent Puts for same key
+	inflightWrites map[CacheKey]chan struct{}
+
 	DiskUsageChecker func(path string) (uint64, uint64, error)
 	Disabled         bool
 }
@@ -78,6 +81,7 @@ func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
 		items:            make(map[CacheKey]*list.Element),
 		logicalOffsets:   make(map[CacheKey]map[uint64]bool),
 		pinned:           make(map[CacheKey]int),
+		inflightWrites:   make(map[CacheKey]chan struct{}),
 		DiskUsageChecker: GetDiskFreeSpace,
 	}
 
@@ -94,22 +98,42 @@ func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte, pin
 	pKey := CacheKey{InodeID: inodeID, Offset: offset}
 
 	c.mu.Lock()
-	if el, exists := c.items[pKey]; exists {
-		entry := el.Value.(*CacheEntry)
-		entry.AccessTime = time.Now()
-		c.lru.MoveToFront(el)
-		if pinned {
-			c.pinned[pKey]++
+	for {
+		if el, exists := c.items[pKey]; exists {
+			entry := el.Value.(*CacheEntry)
+			entry.AccessTime = time.Now()
+			c.lru.MoveToFront(el)
+			if pinned {
+				c.pinned[pKey]++
+			}
+			c.mu.Unlock()
+			return nil
 		}
-		c.mu.Unlock()
-		return nil
+
+		if c.Disabled {
+			c.mu.Unlock()
+			return fmt.Errorf("disk cache is disabled due to low space")
+		}
+
+		if ch, ok := c.inflightWrites[pKey]; ok {
+			c.mu.Unlock()
+			<-ch
+			c.mu.Lock()
+			continue
+		}
+		break
 	}
 
-	if c.Disabled {
-		c.mu.Unlock()
-		return fmt.Errorf("disk cache is disabled due to low space")
-	}
+	doneCh := make(chan struct{})
+	c.inflightWrites[pKey] = doneCh
 	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		delete(c.inflightWrites, pKey)
+		close(doneCh)
+		c.mu.Unlock()
+	}()
 
 	size := int64(len(data))
 	path := c.getPath(inodeID, offset)

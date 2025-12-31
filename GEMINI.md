@@ -1,63 +1,79 @@
 # TigrisFS
 
 ## Project Overview
+TigrisFS is a high-performance, FUSE-based file system written in Go that allows mounting S3-compatible object storage buckets as local file systems. It is based on GeeseFS (a fork of Goofys) and is optimized for performance (aggressive parallelism, asynchrony) and reliability in distributed cluster setups.
 
-Tigrisfs is a high-performance FUSE-based file system for S3-compatible object storage written in Go. It is a fork of [GeeseFS](https://github.com/yandex-cloud/geesefs), which is a fork of [Goofys](https://github.com/kahing/goofys). Tigrisfs allows you to mount an S3 or compatible object store bucket as a local file system.
+**Key Features:**
+*   **S3 Compatible:** Supports AWS S3, Azure Blob Storage, Google Cloud Storage, and Tigris.
+*   **Performance:** Uses asynchronous I/O and parallelism to improve throughput, especially for small files and metadata operations.
+*   **Tigris Backend Enhancements:** When used with Tigris, supports POSIX permissions, special files, symbolic links, and intelligent preloading/prefetching.
+*   **Reliability:** Focused on thread safety (race detector enabled in tests) and code quality (strict linting).
 
-The project is structured as a Go application with the main entry point in `main.go`. The core file system logic is implemented in `core/goofys.go`, and it supports multiple backends, including S3, Azure Blob Storage, and Google Cloud Storage. The configuration is handled through command-line flags, defined in `core/cfg/config.go` and `core/cfg/flags.go`.
+## Architecture & Structure
+*   **`main.go`**: Entry point for the application.
+*   **`core/`**: Contains the core logic of the file system.
+    *   **`core/backend_*.go`**: Implementations for different storage backends (S3, Azure, GCS, ADL).
+    *   **`core/cluster_*.go`**: Logic for distributed cluster operations and gRPC communication.
+    *   **`core/goofys.go` / `core/geesefs.go`**: Core FUSE filesystem logic inherited from predecessors.
+    *   **`core/buffer_*.go`**: Memory management, buffer pools, and caching mechanisms.
+    *   **`core/pb/`**: Protocol Buffer definitions and generated Go code for gRPC.
+*   **`bench/`**: Benchmarking tools and scripts (Goofys, GeeseFS, s3fs comparisons).
+*   **`test/`**: Integration tests, FUSE tests, and scripts for running `xfstests`.
+*   **`pkg/`**: Packaging resources, including systemd service files.
 
-## Building and Running
+## Development Workflow
 
-The project uses a `Makefile` to manage the build, test, and linting processes.
+### Prerequisites
+*   Go (version specified in `go.mod`)
+*   `make`
+*   `protoc` (for regenerating gRPC code)
+*   `s3proxy` (automatically handled by test scripts)
 
-### Building
-
-To build the project, run the following command:
-
+### Setup
+Initialize the local development environment (installs dependencies and git hooks):
 ```bash
-make build
+make setup
 ```
 
-This will create a `tigrisfs` binary in the root directory. To build with race detection enabled, use:
+### Build
+*   **Standard Build:**
+    ```bash
+    make build
+    ```
+*   **Debug Build (Race Detector Enabled):**
+    ```bash
+    make build-debug
+    ```
+*   **Install to `$GOPATH/bin`:**
+    ```bash
+    make install
+    ```
 
-```bash
-make build-debug
-```
-
-### Running Tests
-
-The project has a suite of tests that can be run using the following commands:
-
-*   **Unit Tests:**
+### Testing
+*   **Unit & Integration Tests:**
     ```bash
     make run-test
-    ```
-*   **xfstests:**
-    ```bash
-t
-    make run-xfstests
     ```
 *   **Cluster Tests:**
     ```bash
     make run-cluster-test
     ```
+*   **XFSTests (File System Verification):**
+    ```bash
+    make run-xfstests
+    ```
+*   **Linting:**
+    ```bash
+    make run-lint
+    ```
 
-### Linting
-
-To run the linter, use the following command:
-
+### Code Generation
+Regenerate Protocol Buffers code:
 ```bash
-make run-lint
+make protoc
 ```
 
-This will run `shellcheck` and `golangci-lint`.
-
-## Development Conventions
-
-*   **Dependencies:** The project's dependencies are managed using Go modules. The `go.mod` file lists the project's dependencies.
-*   **Protobuf:** The project uses Protocol Buffers for gRPC communication. The `.proto` files are located in `core/pb`. To generate the Go code from the Protobuf definitions, run:
-    ```bash
-    make protoc
-    ```
-*   **Logging:** The project uses the `zerolog` library for logging.
-*   **Configuration:** The application is configured through command-line flags. The available flags are defined in `core/cfg/flags.go`.
+## Conventions
+*   **Commit Messages:** Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (e.g., `feat(fs): ...`, `fix(cluster): ...`).
+*   **Linting:** `golangci-lint` is strictly enforced.
+*   **Race Detection:** Tests run with the Go race detector enabled by default to catch concurrency issues.

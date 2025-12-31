@@ -187,11 +187,11 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 	}
 
 	// Async disk write
+	var dataCopy []byte
 	if fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil {
 		// Make a copy of data for async write
-		dataCopy := make([]byte, len(data))
+		dataCopy = make([]byte, len(data))
 		copy(dataCopy, data)
-		fh.inode.fs.AsyncDiskWrite(fh.inode, uint64(offset), dataCopy)
 	}
 
 	allocated := fh.inode.buffers.Add(uint64(offset), data, BUF_DIRTY, copyData, false)
@@ -212,6 +212,10 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 	}
 
 	fh.inode.mu.Unlock()
+
+	if dataCopy != nil {
+		fh.inode.fs.AsyncDiskWrite(fh.inode, uint64(offset), dataCopy)
+	}
 
 	// Correct memory usage
 	if allocated != int64(len(data)) {
