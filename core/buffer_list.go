@@ -303,6 +303,10 @@ func (l *BufferList) unqueue(b *FileBuffer) {
 	case BUF_CLEAN, BUF_FLUSHED_FULL:
 		l.helpers.UnqueueCleanBuffer(b)
 	}
+
+	if b.state == BUF_DIRTY && b.onDisk {
+		l.helpers.UnqueueCleanBuffer(b)
+	}
 }
 
 func (l *BufferList) referenceDirtyPart(partNum uint64) {
@@ -336,7 +340,9 @@ func (l *BufferList) queue(b *FileBuffer) {
 		for i := sp; i <= ep; i++ {
 			l.referenceDirtyPart(i)
 		}
-	} else if b.state == BUF_CLEAN || b.state == BUF_FLUSHED_FULL || (b.state == BUF_DIRTY && b.onDisk) {
+	}
+
+	if b.state == BUF_CLEAN || b.state == BUF_FLUSHED_FULL || (b.state == BUF_DIRTY && b.onDisk) {
 		l.helpers.QueueCleanBuffer(b)
 	}
 }
@@ -361,6 +367,10 @@ func (l *BufferList) requeueSplit(left *FileBuffer) {
 		}
 	case BUF_CLEAN, BUF_FLUSHED_FULL:
 		// we only have to add the left buffer, right remains as is
+		l.helpers.QueueCleanBuffer(left)
+	}
+
+	if left.state == BUF_DIRTY && left.onDisk {
 		l.helpers.QueueCleanBuffer(left)
 	}
 }
@@ -785,7 +795,9 @@ func (l *BufferList) MarkOnDisk(offset, size, diskOffset uint64) {
 			// If buffer matches the disk write exactly or is contained
 			if b.offset == start && end == endIntersect {
 				if b.length == size && b.diskOffset == diskOffset {
+					l.unqueue(b)
 					b.onDisk = true
+					l.queue(b)
 				} else {
 					// Logic for partial matches is hard because diskOffset must align.
 					// If we wrote a chunk [offset, offset+size] to disk at physical offset `diskOffset`.
@@ -805,7 +817,9 @@ func (l *BufferList) MarkOnDisk(offset, size, diskOffset uint64) {
 
 					// If it was split, the diskOffset should match.
 					if b.diskOffset == diskOffset+(b.offset-offset) {
+						l.unqueue(b)
 						b.onDisk = true
+						l.queue(b)
 					}
 				}
 			}
