@@ -191,8 +191,21 @@ func (inode *Inode) IsWriteback() bool {
 	return inode.fs.flags.Writeback
 }
 
+func (inode *Inode) Pin(physicalOffset uint64) {
+	if inode.fs.diskCache != nil {
+		inode.fs.diskCache.Pin(inode.Id, physicalOffset)
+	}
+}
+
+func (inode *Inode) Unpin(physicalOffset uint64) {
+	if inode.fs.diskCache != nil {
+		inode.fs.diskCache.Unpin(inode.Id, physicalOffset)
+	}
+}
+
 func (inode *Inode) DeleteFromDisk(buf *FileBuffer) {
 	if inode.fs.diskCache != nil && buf.onDisk {
+		inode.fs.diskCache.Unpin(inode.Id, buf.diskOffset)
 		inode.fs.diskCache.Delete(inode.Id, buf.offset, buf.diskOffset)
 	}
 }

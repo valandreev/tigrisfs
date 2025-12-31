@@ -57,6 +57,8 @@ type BufferListHelpers interface {
 	UnqueueCleanBuffer(*FileBuffer)
 	IsWriteback() bool
 	DeleteFromDisk(*FileBuffer)
+	Pin(uint64)
+	Unpin(uint64)
 }
 
 type dirtyPart struct {
@@ -209,6 +211,11 @@ func (l *BufferList) EvictFromMemory(buf *FileBuffer) (allocated int64, deleted 
 			l.unqueue(buf)
 			l.unqueue(prev)
 			l.at.Delete(prev.offset + prev.length)
+			// If both are dirty and on disk, they are both pinned.
+			// After merge we have one buffer, so we should release one pin.
+			if buf.state == BUF_DIRTY {
+				l.helpers.Unpin(buf.diskOffset)
+			}
 			buf.length += prev.length
 			buf.offset = prev.offset
 			buf.diskOffset = prev.diskOffset
@@ -443,6 +450,22 @@ func (l *BufferList) RemoveRange(removeOffset, removeSize uint64, filter func(b 
 	return
 }
 
+func (l *BufferList) EvictRange(evictOffset, evictSize uint64) (allocated int64) {
+	endOffset := evictOffset + evictSize
+	ascendChange(&l.at, evictOffset+1, func(end uint64, b *FileBuffer) (cont bool, changed bool) {
+		if b.offset >= endOffset {
+			return false, false
+		}
+		if b.onDisk && b.ptr != nil {
+			alloc, _ := l.EvictFromMemory(b)
+			allocated += alloc
+			changed = true
+		}
+		return true, changed
+	})
+	return
+}
+
 func (l *BufferList) insertOrAppend(offset uint64, data []byte, state BufferState, copyData bool, dataPtr *BufferPointer, onDisk bool) (allocated int64) {
 	if len(data) == 0 {
 		return 0
@@ -670,6 +693,9 @@ func (l *BufferList) split(b *FileBuffer, offset uint64) (left, right *FileBuffe
 	b.length = b.offset + b.length - offset
 	b.offset = offset
 	// diskOffset remains the same for both halves
+	if b.onDisk && b.state == BUF_DIRTY {
+		l.helpers.Pin(b.diskOffset)
+	}
 	l.at.Set(offset, &startBuf)
 	l.requeueSplit(&startBuf)
 	return &startBuf, b

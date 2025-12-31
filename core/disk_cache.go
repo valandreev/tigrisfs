@@ -43,6 +43,8 @@ type DiskCache struct {
 	items map[CacheKey]*list.Element
 	// Back-index to find all logical entries for a physical file
 	logicalOffsets map[CacheKey]map[uint64]bool
+	// Files that cannot be evicted (e.g. dirty buffers)
+	pinned map[CacheKey]int
 
 	DiskUsageChecker func(path string) (uint64, uint64, error)
 	Disabled         bool
@@ -75,6 +77,7 @@ func NewDiskCache(path string, maxSizeGB int) (*DiskCache, error) {
 		inodes:           make(map[fuseops.InodeID]*btree.BTreeG[*CacheEntry]),
 		items:            make(map[CacheKey]*list.Element),
 		logicalOffsets:   make(map[CacheKey]map[uint64]bool),
+		pinned:           make(map[CacheKey]int),
 		DiskUsageChecker: GetDiskFreeSpace,
 	}
 
@@ -87,23 +90,26 @@ func (c *DiskCache) getPath(inodeID fuseops.InodeID, physicalOffset uint64) stri
 	return filepath.Join(c.basePath, shard, fileName)
 }
 
-func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte) error {
-	c.mu.Lock()
-	if c.Disabled {
-		c.mu.Unlock()
-		return nil
-	}
-	defer c.mu.Unlock()
-
-	// Check if this exact range is already cached
+func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte, pinned bool) error {
 	pKey := CacheKey{InodeID: inodeID, Offset: offset}
+
+	c.mu.Lock()
 	if el, exists := c.items[pKey]; exists {
-		// Update access time only and move to front of LRU
 		entry := el.Value.(*CacheEntry)
 		entry.AccessTime = time.Now()
 		c.lru.MoveToFront(el)
+		if pinned {
+			c.pinned[pKey]++
+		}
+		c.mu.Unlock()
 		return nil
 	}
+
+	if c.Disabled {
+		c.mu.Unlock()
+		return fmt.Errorf("disk cache is disabled due to low space")
+	}
+	c.mu.Unlock()
 
 	size := int64(len(data))
 	path := c.getPath(inodeID, offset)
@@ -126,11 +132,34 @@ func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte) err
 		return err
 	}
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check again if it was added while we were doing I/O
+	if el, exists := c.items[pKey]; exists {
+		entry := el.Value.(*CacheEntry)
+		entry.AccessTime = time.Now()
+		c.lru.MoveToFront(el)
+		if pinned {
+			c.pinned[pKey]++
+		}
+		return nil
+	}
+
 	// For Put, logical == physical
 	c.addEntryLocked(inodeID, offset, offset, size, time.Now())
+	if pinned {
+		c.pinned[pKey]++
+	}
 
 	c.evictIfNeeded()
 	return nil
+}
+
+func (c *DiskCache) CanWrite() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.Disabled
 }
 
 func (c *DiskCache) addEntryLocked(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, size int64, accessTime time.Time) {
@@ -156,6 +185,15 @@ func (c *DiskCache) addEntryLocked(inodeID fuseops.InodeID, logicalOffset, physi
 		oldPKey := CacheKey{InodeID: inodeID, Offset: old.PhysicalOffset}
 		if oldOffsets, ok := c.logicalOffsets[oldPKey]; ok {
 			delete(oldOffsets, old.LogicalOffset)
+		}
+		// If we're replacing an entry that might have a different size,
+		// we should theoretically adjust CurSize if the physical file changed.
+		// However, in our system, physical files are immutable once written.
+		// If physical offset changed, we need to handle that.
+		if old.PhysicalOffset != physicalOffset {
+			// This case shouldn't really happen for the same logical offset in our current design
+			// but for completeness:
+			mainLog.Warnf("DiskCache: logical offset %v physical offset changed from %v to %v", logicalOffset, old.PhysicalOffset, physicalOffset)
 		}
 	}
 
@@ -224,14 +262,70 @@ func (c *DiskCache) Get(inodeID fuseops.InodeID, logicalOffset, physicalOffset u
 	return n, err
 }
 
+func (c *DiskCache) Pin(inodeID fuseops.InodeID, physicalOffset uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
+	c.pinned[pKey]++
+}
+
+func (c *DiskCache) Unpin(inodeID fuseops.InodeID, physicalOffset uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
+	if v, ok := c.pinned[pKey]; ok {
+		if v <= 1 {
+			delete(c.pinned, pKey)
+		} else {
+			c.pinned[pKey] = v - 1
+		}
+	}
+}
+
+func (c *DiskCache) GetThrottleDelay() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.Disabled {
+		return 0
+	}
+
+	// If cache is > 95% full, start throttling
+	if c.CurSize > int64(float64(c.MaxSize)*0.95) {
+		return 100 * time.Millisecond
+	}
+
+	// Disk space check is done periodically in startMonitor,
+	// but we could also check a cached value here if we updated it more often.
+	// For now, let's just use the current size as the main throttle.
+	return 0
+}
+
 func (c *DiskCache) evictIfNeeded() {
 	c.evictToSize(c.MaxSize)
 }
 
 func (c *DiskCache) evictToSize(targetSize int64) {
-	for c.CurSize > targetSize && c.lru.Len() > 0 {
+	if c.lru.Len() == 0 {
+		return
+	}
+
+	// We might not be able to reach targetSize if many files are pinned
+	maxAttempts := c.lru.Len()
+	for c.CurSize > targetSize && maxAttempts > 0 {
 		el := c.lru.Back()
+		entry := el.Value.(*CacheEntry)
+		pKey := CacheKey{InodeID: entry.InodeID, Offset: entry.PhysicalOffset}
+
+		if c.pinned[pKey] > 0 {
+			// Move to front so we don't keep trying the same pinned item
+			c.lru.MoveToFront(el)
+			maxAttempts--
+			continue
+		}
+
 		c.removeEntry(el)
+		maxAttempts--
 	}
 }
 
@@ -390,10 +484,14 @@ func (c *DiskCache) Delete(inodeID fuseops.InodeID, logicalOffset, physicalOffse
 	}
 }
 
-func (c *DiskCache) RestoreState(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, size int64, accessTime time.Time) {
+func (c *DiskCache) RestoreState(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, size int64, accessTime time.Time, pinned bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.addEntryLocked(inodeID, logicalOffset, physicalOffset, size, accessTime)
+	if pinned {
+		pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
+		c.pinned[pKey]++
+	}
 }
 
 func (c *DiskCache) GetMeta(inodeID fuseops.InodeID, logicalOffset uint64) (time.Time, bool) {

@@ -26,14 +26,14 @@ func TestDiskCache_LRU(t *testing.T) {
 	for i := range data1 {
 		data1[i] = '1'
 	}
-	err = dc.Put(1, 0, data1)
+	err = dc.Put(1, 0, data1, false)
 	assert.NoError(t, err)
 
 	data2 := make([]byte, 4096)
 	for i := range data2 {
 		data2[i] = '2'
 	}
-	err = dc.Put(2, 0, data2)
+	err = dc.Put(2, 0, data2, false)
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(8192), dc.CurSize)
@@ -42,7 +42,7 @@ func TestDiskCache_LRU(t *testing.T) {
 	for i := range data3 {
 		data3[i] = '3'
 	}
-	err = dc.Put(3, 0, data3)
+	err = dc.Put(3, 0, data3, false)
 	assert.NoError(t, err)
 
 	// Inode 1 should be gone (First In, First Out in LRU)
@@ -80,11 +80,11 @@ func TestDiskCache_SubRange(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
-	err = dc.Put(10, 0, data)
+	err = dc.Put(10, 0, data, false)
 	assert.NoError(t, err)
 
 	// Now mimic a split: add logical entry for [64K, 128K) pointing to physical file 0
-	dc.RestoreState(10, 64*1024, 0, 64*1024, time.Now())
+	dc.RestoreState(10, 64*1024, 0, 64*1024, time.Now(), false)
 
 	// Read 32KB from offset 64KB (logical)
 	// It should find the entry starting at 64KB, which points to physical file 0.
@@ -108,9 +108,9 @@ func TestDiskCache_RestoreState(t *testing.T) {
 
 	now := time.Now()
 	// logical 0, physical 0
-	dc.RestoreState(10, 0, 0, 1024, now)
+	dc.RestoreState(10, 0, 0, 1024, now, false)
 	// logical 1024, physical 0 (split)
-	dc.RestoreState(10, 1024, 0, 2048, now.Add(time.Minute))
+	dc.RestoreState(10, 1024, 0, 2048, now.Add(time.Minute), false)
 
 	assert.Equal(t, int64(1024), dc.CurSize) // Second RestoreState for same physical file doesn't increase size
 	assert.Equal(t, 1, dc.lru.Len())         // Same physical file = 1 LRU entry

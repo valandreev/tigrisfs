@@ -295,7 +295,7 @@ func (fs *Goofys) LoadCache() error {
 							inode.buffers.queue(fb)
 
 							if fs.diskCache != nil {
-								fs.diskCache.RestoreState(inode.Id, fb.offset, fb.diskOffset, int64(fb.length), bcp.AccessTime)
+								fs.diskCache.RestoreState(inode.Id, fb.offset, fb.diskOffset, int64(fb.length), bcp.AccessTime, fb.state == BUF_DIRTY)
 							}
 						}
 					}

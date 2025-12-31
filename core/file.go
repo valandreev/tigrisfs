@@ -150,8 +150,16 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 		return syscall.EFBIG
 	}
 
+	// Throttling
+	if fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil {
+		if delay := fh.inode.fs.diskCache.GetThrottleDelay(); delay > 0 {
+			time.Sleep(delay)
+		}
+	}
+
 	// Try to reserve space without the inode lock
-	err = fh.inode.fs.bufferPool.Use(int64(len(data)), false)
+	canWriteDisk := fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil && fh.inode.fs.diskCache.CanWrite()
+	err = fh.inode.fs.bufferPool.Use(int64(len(data)), canWriteDisk)
 	if err != nil {
 		return err
 	}
@@ -177,7 +185,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 
 	onDisk := false
 	if fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil {
-		errCache := fh.inode.fs.diskCache.Put(fh.inode.Id, uint64(offset), data)
+		errCache := fh.inode.fs.diskCache.Put(fh.inode.Id, uint64(offset), data, true)
 		if errCache == nil {
 			onDisk = true
 		} else {
@@ -444,7 +452,7 @@ func (inode *Inode) sendRead(cloud StorageBackend, key string, offset, size uint
 		}
 		onDisk := false
 		if inode.fs.flags.CachePath != "" && inode.fs.diskCache != nil {
-			errCache := inode.fs.diskCache.Put(inode.Id, offset, buf)
+			errCache := inode.fs.diskCache.Put(inode.Id, offset, buf, false)
 			if errCache == nil {
 				onDisk = true
 			} else {
@@ -1767,6 +1775,19 @@ func (inode *Inode) flushPart(part uint64) {
 		}
 		fuseLog.Debugf("Flushed part %v of object %v", part, key)
 		inode.buffers.SetState(partOffset, partSize, bufIds, doneState)
+
+		// Unpin buffers if they were on disk
+		if inode.fs.diskCache != nil {
+			inode.buffers.Ascend(partOffset+1, func(end uint64, b *FileBuffer) (cont bool, changed bool) {
+				if b.offset >= partOffset+partSize {
+					return false, false
+				}
+				if b.onDisk {
+					inode.fs.diskCache.Unpin(inode.Id, b.diskOffset)
+				}
+				return true, false
+			})
+		}
 	}
 }
 

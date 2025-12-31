@@ -41,6 +41,12 @@ func (t *TestBLHelpers) IsWriteback() bool {
 func (t *TestBLHelpers) DeleteFromDisk(buf *FileBuffer) {
 }
 
+func (t *TestBLHelpers) Pin(offset uint64) {
+}
+
+func (t *TestBLHelpers) Unpin(offset uint64) {
+}
+
 func filledBuf(n int, c byte) []byte {
 	b := make([]byte, n)
 	for i := 0; i < n; i++ {

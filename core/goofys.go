@@ -303,10 +303,13 @@ func NewGoofys(ctx context.Context, bucketName string, flags *cfg.FlagStorage) (
 func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 	newBackend func(string, *cfg.FlagStorage) (StorageBackend, error),
 ) (*Goofys, error) {
+	// Copy flags to avoid mutating original struct (e.g. in tests)
+	flagsCopy := *flags
+
 	// Set up the basic struct.
 	fs := &Goofys{
 		bucket:           bucket,
-		flags:            flags,
+		flags:            &flagsCopy,
 		umask:            0o122,
 		shutdownCh:       make(chan struct{}),
 		zeroBuf:          make([]byte, 1048576),
@@ -608,7 +611,7 @@ func (fs *Goofys) tryEvictToDisk(inode *Inode, buf *FileBuffer, toFs *int) {
 		}
 		if *toFs > 0 && fs.diskCache != nil {
 			// Evict to disk
-			err := fs.diskCache.Put(inode.Id, buf.offset, buf.data)
+			err := fs.diskCache.Put(inode.Id, buf.offset, buf.data, buf.state == BUF_DIRTY)
 			if err != nil {
 				*toFs = 0
 				mainLog.Errorf("Couldn't write %v bytes at offset %v to %v: %v",
