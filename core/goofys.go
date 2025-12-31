@@ -113,7 +113,8 @@ type Goofys struct {
 
 	zeroBuf []byte
 
-	diskCache *DiskCache
+	diskCache   *DiskCache
+	diskWriteCh chan *DiskWriteRequest
 
 	stats OpStats
 
@@ -319,6 +320,11 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 			ts: time.Now(),
 		},
 		flushPriorities: make([]int64, MAX_FLUSH_PRIORITY+1),
+		diskWriteCh:     make(chan *DiskWriteRequest, 1000),
+	}
+
+	for i := 0; i < 16; i++ {
+		go fs.DiskWriter()
 	}
 
 	var prefix string

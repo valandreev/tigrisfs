@@ -773,6 +773,47 @@ func appendZero(data [][]byte, zeroLen uint64) [][]byte {
 	return data
 }
 
+func (l *BufferList) MarkOnDisk(offset, size, diskOffset uint64) {
+	l.at.Ascend(offset+1, func(end uint64, b *FileBuffer) bool {
+		if b.offset >= offset+size {
+			return false
+		}
+		// calculate intersection
+		start := max(b.offset, offset)
+		endIntersect := min(end, offset+size)
+		if endIntersect > start {
+			// If buffer matches the disk write exactly or is contained
+			if b.offset == start && end == endIntersect {
+				if b.length == size && b.diskOffset == diskOffset {
+					b.onDisk = true
+				} else {
+					// Logic for partial matches is hard because diskOffset must align.
+					// If we wrote a chunk [offset, offset+size] to disk at physical offset `diskOffset`.
+					// And we found a buffer b that intersects.
+
+					// If the buffer spans exactly the expected range relative to diskOffset
+					// buffer offset B vs write offset W.
+					// relative offset = B - W.
+					// check if b.diskOffset matches
+
+					// Since we only call this for chunks we just wrote, and we assumed
+					// we didn't append to them (Logic in WriteFile ensures this),
+					// we expect exact matches or containment if split.
+
+					// But for now, let's keep it strict.
+					// If we found the exact buffer we added (or it was split), we mark it.
+
+					// If it was split, the diskOffset should match.
+					if b.diskOffset == diskOffset+(b.offset-offset) {
+						b.onDisk = true
+					}
+				}
+			}
+		}
+		return true
+	})
+}
+
 func (l *BufferList) GetHoles(offset, size uint64) (holes []Range, loading bool, flushCleared bool) {
 	curOffset := offset
 	endOffset := offset + size

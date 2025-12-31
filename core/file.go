@@ -127,6 +127,13 @@ func (inode *Inode) ResizeUnlocked(newSize uint64, finalizeFlushed bool) {
 	inode.Attributes.Size = newSize
 }
 
+func (inode *Inode) MarkBufferOnDisk(offset, size uint64) {
+	inode.mu.Lock()
+	defer inode.mu.Unlock()
+	// diskOffset for a buffer created at 'offset' is 'offset'
+	inode.buffers.MarkOnDisk(offset, size, offset)
+}
+
 func (inode *Inode) checkPauseWriters() {
 	for inode.pauseWriters > 0 {
 		if inode.readCond == nil {
@@ -151,11 +158,7 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 	}
 
 	// Throttling
-	if fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil {
-		if delay := fh.inode.fs.diskCache.GetThrottleDelay(); delay > 0 {
-			time.Sleep(delay)
-		}
-	}
+	// Throttling removed for async writeback
 
 	// Try to reserve space without the inode lock
 	canWriteDisk := fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil && fh.inode.fs.diskCache.CanWrite()
@@ -183,17 +186,15 @@ func (fh *FileHandle) WriteFile(offset int64, data []byte, copyData bool) (err e
 		fh.inode.ResizeUnlocked(end, false)
 	}
 
-	onDisk := false
+	// Async disk write
 	if fh.inode.fs.flags.Writeback && fh.inode.fs.diskCache != nil {
-		errCache := fh.inode.fs.diskCache.Put(fh.inode.Id, uint64(offset), data, true)
-		if errCache == nil {
-			onDisk = true
-		} else {
-			fuseLog.Warnf("Failed to write to cache in writeback mode: %v", errCache)
-		}
+		// Make a copy of data for async write
+		dataCopy := make([]byte, len(data))
+		copy(dataCopy, data)
+		fh.inode.fs.AsyncDiskWrite(fh.inode, uint64(offset), dataCopy)
 	}
 
-	allocated := fh.inode.buffers.Add(uint64(offset), data, BUF_DIRTY, copyData, onDisk)
+	allocated := fh.inode.buffers.Add(uint64(offset), data, BUF_DIRTY, copyData, false)
 	atomic.StoreUint64(&fh.inode.fs.hasNewWrites, 1)
 
 	fh.inode.lastWriteEnd = end
@@ -228,9 +229,20 @@ func (inode *Inode) OpenCacheFD() error {
 func (inode *Inode) loadFromServer(readRanges []Range, readAheadSize uint64, ignoreMemoryLimit bool) {
 	// Add readahead & merge adjacent requests
 	readRanges = mergeRA(readRanges, readAheadSize, inode.fs.flags.ReadMergeKB*1024)
-	last := &readRanges[len(readRanges)-1]
-	if last.End > inode.knownSize {
-		last.End = inode.knownSize
+	// Cap read range at knownSize (server doesn't have data beyond that)
+	// Iterate backwards to safely remove ranges that are fully beyond knownSize
+	for i := len(readRanges) - 1; i >= 0; i-- {
+		if readRanges[i].Start >= inode.knownSize {
+			// Range is entirely beyond knownSize, remove it
+			readRanges = readRanges[:i]
+			continue
+		}
+		if readRanges[i].End > inode.knownSize {
+			readRanges[i].End = inode.knownSize
+		}
+	}
+	if len(readRanges) == 0 {
+		return
 	}
 	// Split very large requests into smaller chunks to read in parallel
 	readRanges = splitRA(readRanges, inode.fs.flags.ReadAheadParallelKB*1024)
@@ -274,9 +286,12 @@ func (inode *Inode) loadFromDisk(diskRanges []Range) (allocated int64, err error
 			})
 
 			n, errCache := inode.fs.diskCache.Get(inode.Id, rr.Start, diskOffset, data)
-			if errCache == nil {
+			if errCache == nil && uint64(n) == readSize {
 				inode.buffers.ReviveFromDisk(rr.Start, data[:n])
 			} else {
+				if errCache == nil {
+					errCache = fmt.Errorf("short read from disk cache: expected %d, got %d", readSize, n)
+				}
 				// Failed to read from cache (evicted?), fall back to server
 				if isDirty {
 					fuseLog.Errorf("CRITICAL: Failed to read DIRTY buffer from disk cache (inode %d, logical %d, physical %d): %v. Data might be lost!", inode.Id, rr.Start, diskOffset, errCache)
@@ -357,6 +372,9 @@ func (inode *Inode) LoadRange(offset, size uint64, readAheadSize uint64, ignoreM
 			switch err {
 			case ErrBufferIsLoading:
 				// still loading
+				if inode.readCond == nil {
+					inode.readCond = sync.NewCond(&inode.mu)
+				}
 				inode.readCond.Wait()
 			case ErrBufferIsMissing:
 				// loading buffer disappeared => read error
