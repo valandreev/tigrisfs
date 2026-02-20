@@ -1169,7 +1169,7 @@ func (inode *Inode) sendUploadParts(priority int) (bool, bool) {
 		}
 	}
 	if !initiated && anyEvicted && len(fullyZero) > 0 {
-		for _, partNum := range partlyZero {
+		for _, partNum := range fullyZero {
 			partOffset, partSize := inode.fs.partRange(partNum)
 			initiated = initiated || inode.goFlushPart(partNum, partOffset, partSize, 3)
 			if inode.flushLimitsExceeded() {
