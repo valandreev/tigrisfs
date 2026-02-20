@@ -79,63 +79,96 @@ The target is a solid, professional S3 filesystem client:
 - operator-friendly with built-in health and telemetry
 - easy to use for both single-bucket and unified multi-bucket workflows
 
-# Installation
+# Run This Branch
 
-## Recommended: One-line install
+## 1) Clone and checkout this fork branch
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/tigrisdata/tigrisfs/refs/heads/main/install.sh | bash
+git clone https://github.com/dr1pvfx/tigrisfs.git
+cd tigrisfs
+git checkout codex/finn-gui-usage-docs
 ```
 
-## Prebuilt DEB and RPM packages 
+## 2) Prerequisites
 
-* Download the latest release: [DEB](https://github.com/tigrisdata/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_linux_amd64.deb), [RPM](https://github.com/tigrisdata/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_linux_amd64.rpm).
-* Install the package:
-  * Debian-based systems:
-    ```bash
-    dpkg -i tigrisfs_1.2.1_linux_amd64.deb
-    ```
-  * RPM-based systems:
-    ```bash
-    rpm -i tigrisfs_1.2.1_linux_amd64.rpm
-    ```
-* Configure credentials
-  TigrisFS can use credentials from different sources:
-  * Standard AWS credentials files `~/.aws/credentials` and `~/.aws/config`. Use `aws configure` to set them up and export
-    `AWS_PROFILE` environment variable to use a specific profile.
-  * Environment variables `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
-  * TigrisFS credentials in `/etc/default/tigrisfs` or mount specific credentials in `/etc/default/tigrisfs-<bucket>`.
-See [docs](https://www.tigrisdata.com/docs/sdks/s3/aws-cli/) for more details.
- 
-* Mount the bucket
-  * as current user
-    ```bash
-    systemctl --user start tigrisfs@<bucket>
-    ```
-    The bucket is mounted at `$HOME/mnt/tigris/<bucket>`.
-  * as root
-    ```bash
-    systemctl start tigrisfs@<bucket>
-    ```
-    The bucket is mounted at `/mnt/tigris/<bucket>`.
+- Go toolchain installed (same version required by `go.mod`).
+- macOS:
+  - [macFUSE](https://osxfuse.github.io)
+  - optional for Finder Sync packaging: `xcodebuild`, `xcodegen`
+- Windows:
+  - [WinFsp](https://winfsp.dev)
+  - optional for Explorer extension build/register: .NET SDK + Administrator PowerShell
 
-## Binary install
+## 3) Build binaries from source
 
-* Download and unpack the latest release:
-  * MacOS ARM64
-    ```
-      curl -L https://github.com/tigrisdata/tigrisfs/releases/download/v1.2.1/tigrisfs_1.2.1_darwin_arm64.tar.gz | sudo tar -xz -C /usr/local/bin
-    ```
-* Configuration is the same as for the DEB and RPM packages above.
-* Mount the bucket:
-  * as current user
-    ```bash
-    /usr/local/bin/tigrisfs <bucket> $HOME/mnt/tigrisfs/<bucket>
-    ```
-  * as root
-    ```bash
-    sudo /usr/local/bin/tigrisfs <bucket> /mnt/tigrisfs/<bucket>
-    ```
+```bash
+go build -o tigrisfs .
+go build -o tigrisfs-gui ./gui
+```
+
+## 4) Run the desktop app
+
+```bash
+./tigrisfs-gui
+```
+
+In the app:
+- create/save a connection profile
+- probe S3 buckets
+- mount buckets individually or as one unified namespace
+- monitor cache/disk usage and transfer rates
+- use advanced logs and extension health in `Settings`/`Logs`
+
+Full GUI walkthrough: [docs/gui-app-usage.md](docs/gui-app-usage.md).
+
+## 5) Run the CLI directly
+
+```bash
+AWS_ACCESS_KEY_ID="<access-key>" \
+AWS_SECRET_ACCESS_KEY="<secret-key>" \
+./tigrisfs <bucket> <mountpoint> --endpoint https://s3.example.com
+```
+
+Example:
+
+```bash
+mkdir -p ~/TigrisFS/my-bucket
+AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." \
+./tigrisfs my-bucket ~/TigrisFS/my-bucket --endpoint https://s3.example.com
+```
+
+## 6) Install Finder / Explorer integration
+
+From the GUI:
+- open `Settings`
+- click `Install Finder Integration` (macOS) or `Install Windows Explorer Integration` (Windows)
+
+Or via CLI switch:
+
+```bash
+./tigrisfs-gui --install-file-manager-integration
+```
+
+Remove integration:
+
+```bash
+./tigrisfs-gui --uninstall-file-manager-integration
+```
+
+## 7) Native extension packaging (maintainers)
+
+macOS Finder host + appex:
+
+```bash
+./scripts/package_finder_sync.sh ./tigrisfs-gui
+```
+
+Windows Explorer extension build/register/restart (run as Administrator on Windows):
+
+```powershell
+cd gui\extensions\windows\TigrisFS.ExplorerExtension\tools
+.\build-register-restart.ps1 -Configuration Release
+```
  
 # License
 
