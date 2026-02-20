@@ -25,6 +25,8 @@ import (
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/tigrisdata/tigrisfs/core/pb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -33,8 +35,35 @@ type ClusterFsGrpc struct {
 	*ClusterFs
 }
 
+func (fs *ClusterFsGrpc) inodeByIDOrErr(id fuseops.InodeID) (*Inode, error) {
+	inode := fs.inodeById(id)
+	if inode == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "stale inode: %d", id)
+	}
+	return inode, nil
+}
+
+func (fs *ClusterFsGrpc) inodeByFileHandleOrErr(id fuseops.HandleID) (*Inode, error) {
+	inode := fs.inodeByFileHandleId(id)
+	if inode == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "stale file handle: %d", id)
+	}
+	return inode, nil
+}
+
+func (fs *ClusterFsGrpc) inodeByDirHandleOrErr(id fuseops.HandleID) (*Inode, error) {
+	inode := fs.inodeByDirHandleId(id)
+	if inode == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "stale dir handle: %d", id)
+	}
+	return inode, nil
+}
+
 func (fs *ClusterFsGrpc) TryStealInodeOwnership(ctx context.Context, req *pb.TryStealInodeOwnershipRequest) (*pb.TryStealInodeOwnershipResponse, error) {
-	inode := fs.inodeById(fuseops.InodeID(req.InodeId))
+	inode, err := fs.inodeByIDOrErr(fuseops.InodeID(req.InodeId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.ChangeOwnerLock()
 
@@ -56,7 +85,10 @@ func (fs *ClusterFsGrpc) TryStealInodeOwnership(ctx context.Context, req *pb.Try
 // file
 
 func (fs *ClusterFsGrpc) CreateFile(ctx context.Context, req *pb.CreateFileRequest) (*pb.CreateFileResponse, error) {
-	parent := fs.inodeById(fuseops.InodeID(req.Parent))
+	parent, err := fs.inodeByIDOrErr(fuseops.InodeID(req.Parent))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -78,7 +110,10 @@ func (fs *ClusterFsGrpc) CreateFile(ctx context.Context, req *pb.CreateFileReque
 }
 
 func (fs *ClusterFsGrpc) OpenFile(ctx context.Context, req *pb.OpenFileRequest) (*pb.OpenFileResponse, error) {
-	parent := fs.inodeById(fuseops.InodeID(req.InodeId))
+	parent, err := fs.inodeByIDOrErr(fuseops.InodeID(req.InodeId))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -97,7 +132,10 @@ func (fs *ClusterFsGrpc) OpenFile(ctx context.Context, req *pb.OpenFileRequest) 
 }
 
 func (fs *ClusterFsGrpc) ReadFile(ctx context.Context, req *pb.ReadFileRequest) (*pb.ReadFileResponse, error) {
-	parent := fs.inodeByFileHandleId(fuseops.HandleID(req.HandleId))
+	parent, err := fs.inodeByFileHandleOrErr(fuseops.HandleID(req.HandleId))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -126,7 +164,10 @@ func (fs *ClusterFsGrpc) ReadFile(ctx context.Context, req *pb.ReadFileRequest) 
 }
 
 func (fs *ClusterFsGrpc) WriteFile(ctx context.Context, req *pb.WriteFileRequest) (*pb.WriteFileResponse, error) {
-	parent := fs.inodeByFileHandleId(fuseops.HandleID(req.HandleId))
+	parent, err := fs.inodeByFileHandleOrErr(fuseops.HandleID(req.HandleId))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -135,7 +176,7 @@ func (fs *ClusterFsGrpc) WriteFile(ctx context.Context, req *pb.WriteFileRequest
 		return &pb.WriteFileResponse{AnotherOwner: parent.pbOwner()}, nil
 	}
 
-	_, err := fs.writeFile(fuseops.HandleID(req.HandleId), req.Offset, req.Data)
+	_, err = fs.writeFile(fuseops.HandleID(req.HandleId), req.Offset, req.Data)
 
 	parent.KeepOwnerUnlock()
 
@@ -147,7 +188,10 @@ func (fs *ClusterFsGrpc) WriteFile(ctx context.Context, req *pb.WriteFileRequest
 }
 
 func (fs *ClusterFsGrpc) ReleaseFileHandle(ctx context.Context, req *pb.ReleaseFileHandleRequest) (*pb.ReleaseFileHandleResponse, error) {
-	inode := fs.inodeByFileHandleId(fuseops.HandleID(req.HandleId))
+	inode, err := fs.inodeByFileHandleOrErr(fuseops.HandleID(req.HandleId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 
@@ -164,7 +208,10 @@ func (fs *ClusterFsGrpc) ReleaseFileHandle(ctx context.Context, req *pb.ReleaseF
 }
 
 func (fs *ClusterFsGrpc) Unlink(ctx context.Context, req *pb.UnlinkRequest) (*pb.UnlinkResponse, error) {
-	parent := fs.inodeById(fuseops.InodeID(req.Parent))
+	parent, err := fs.inodeByIDOrErr(fuseops.InodeID(req.Parent))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -173,7 +220,7 @@ func (fs *ClusterFsGrpc) Unlink(ctx context.Context, req *pb.UnlinkRequest) (*pb
 		return &pb.UnlinkResponse{AnotherOwner: parent.pbOwner()}, nil
 	}
 
-	err := fs.unlink(parent, req.Name)
+	err = fs.unlink(parent, req.Name)
 
 	parent.KeepOwnerUnlock()
 
@@ -181,7 +228,10 @@ func (fs *ClusterFsGrpc) Unlink(ctx context.Context, req *pb.UnlinkRequest) (*pb
 }
 
 func (fs *ClusterFsGrpc) CreateSymlink(ctx context.Context, req *pb.CreateSymlinkRequest) (*pb.CreateSymlinkResponse, error) {
-	parent := fs.inodeById(fuseops.InodeID(req.Parent))
+	parent, err := fs.inodeByIDOrErr(fuseops.InodeID(req.Parent))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -202,7 +252,10 @@ func (fs *ClusterFsGrpc) CreateSymlink(ctx context.Context, req *pb.CreateSymlin
 }
 
 func (fs *ClusterFsGrpc) ReadSymlink(ctx context.Context, req *pb.ReadSymlinkRequest) (*pb.ReadSymlinkResponse, error) {
-	inode := fs.inodeById(fuseops.InodeID(req.Inode))
+	inode, err := fs.inodeByIDOrErr(fuseops.InodeID(req.Inode))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 
@@ -224,7 +277,10 @@ func (fs *ClusterFsGrpc) ReadSymlink(ctx context.Context, req *pb.ReadSymlinkReq
 // dir
 
 func (fs *ClusterFsGrpc) MkDir(ctx context.Context, req *pb.MkDirRequest) (*pb.MkDirResponse, error) {
-	parent := fs.inodeById(fuseops.InodeID(req.Parent))
+	parent, err := fs.inodeByIDOrErr(fuseops.InodeID(req.Parent))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -245,7 +301,10 @@ func (fs *ClusterFsGrpc) MkDir(ctx context.Context, req *pb.MkDirRequest) (*pb.M
 }
 
 func (fs *ClusterFsGrpc) OpenDir(ctx context.Context, req *pb.OpenDirRequest) (*pb.OpenDirResponse, error) {
-	inode := fs.inodeById(fuseops.InodeID(req.InodeId))
+	inode, err := fs.inodeByIDOrErr(fuseops.InodeID(req.InodeId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 
@@ -254,7 +313,11 @@ func (fs *ClusterFsGrpc) OpenDir(ctx context.Context, req *pb.OpenDirRequest) (*
 		return &pb.OpenDirResponse{AnotherOwner: inode.pbOwner()}, nil
 	}
 
-	handleId := fs.openDir(inode)
+	handleId, openErr := fs.openDir(inode)
+	if openErr != nil {
+		inode.KeepOwnerUnlock()
+		return &pb.OpenDirResponse{Errno: uint64(toErrno(openErr))}, nil
+	}
 
 	inode.KeepOwnerUnlock()
 
@@ -264,7 +327,10 @@ func (fs *ClusterFsGrpc) OpenDir(ctx context.Context, req *pb.OpenDirRequest) (*
 }
 
 func (fs *ClusterFsGrpc) ReadDir(ctx context.Context, req *pb.ReadDirRequest) (*pb.ReadDirResponse, error) {
-	inode := fs.inodeByDirHandleId(fuseops.HandleID(req.HandleId))
+	inode, err := fs.inodeByDirHandleOrErr(fuseops.HandleID(req.HandleId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 
@@ -276,7 +342,7 @@ func (fs *ClusterFsGrpc) ReadDir(ctx context.Context, req *pb.ReadDirRequest) (*
 	dst := make([]byte, len(req.Dst))
 	copy(dst, req.Dst)
 	bytesRead := int(req.BytesRead)
-	err := fs.readDir(
+	err = fs.readDir(
 		fuseops.HandleID(req.HandleId),
 		fuseops.DirOffset(req.Offset),
 		dst,
@@ -296,7 +362,10 @@ func (fs *ClusterFsGrpc) ReadDir(ctx context.Context, req *pb.ReadDirRequest) (*
 }
 
 func (fs *ClusterFsGrpc) ReleaseDirHandle(ctx context.Context, req *pb.ReleaseDirHandleRequest) (*pb.ReleaseDirHandleResponse, error) {
-	inode := fs.inodeByDirHandleId(fuseops.HandleID(req.HandleId))
+	inode, err := fs.inodeByDirHandleOrErr(fuseops.HandleID(req.HandleId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.ownerMu.RLock()
 
@@ -313,7 +382,10 @@ func (fs *ClusterFsGrpc) ReleaseDirHandle(ctx context.Context, req *pb.ReleaseDi
 }
 
 func (fs *ClusterFsGrpc) LookUpInode(ctx context.Context, req *pb.LookUpInodeRequest) (*pb.LookUpInodeResponse, error) {
-	parent := fs.inodeById(fuseops.InodeID(req.Parent))
+	parent, err := fs.inodeByIDOrErr(fuseops.InodeID(req.Parent))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -335,7 +407,10 @@ func (fs *ClusterFsGrpc) LookUpInode(ctx context.Context, req *pb.LookUpInodeReq
 }
 
 func (fs *ClusterFsGrpc) LookUpInode2(ctx context.Context, req *pb.LookUpInode2Request) (*pb.LookUpInode2Response, error) {
-	inode := fs.inodeById(fuseops.InodeID(req.InodeId))
+	inode, err := fs.inodeByIDOrErr(fuseops.InodeID(req.InodeId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 
@@ -357,7 +432,10 @@ func (fs *ClusterFsGrpc) LookUpInode2(ctx context.Context, req *pb.LookUpInode2R
 }
 
 func (fs *ClusterFsGrpc) RmDir(ctx context.Context, req *pb.RmDirRequest) (*pb.RmDirResponse, error) {
-	parent := fs.inodeById(fuseops.InodeID(req.Parent))
+	parent, err := fs.inodeByIDOrErr(fuseops.InodeID(req.Parent))
+	if err != nil {
+		return nil, err
+	}
 
 	parent.KeepOwnerLock()
 
@@ -366,7 +444,7 @@ func (fs *ClusterFsGrpc) RmDir(ctx context.Context, req *pb.RmDirRequest) (*pb.R
 		return &pb.RmDirResponse{AnotherOwner: parent.pbOwner()}, nil
 	}
 
-	err := fs.rmDir(parent, req.Name)
+	err = fs.rmDir(parent, req.Name)
 
 	parent.KeepOwnerUnlock()
 
@@ -376,7 +454,10 @@ func (fs *ClusterFsGrpc) RmDir(ctx context.Context, req *pb.RmDirRequest) (*pb.R
 // both
 
 func (fs *ClusterFsGrpc) GetInodeAttributes(ctx context.Context, req *pb.GetInodeAttributesRequest) (*pb.GetInodeAttributesResponse, error) {
-	inode := fs.inodeById(fuseops.InodeID(req.InodeId))
+	inode, err := fs.inodeByIDOrErr(fuseops.InodeID(req.InodeId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 
@@ -405,7 +486,10 @@ func (fs *ClusterFsGrpc) GetInodeAttributes(ctx context.Context, req *pb.GetInod
 }
 
 func (fs *ClusterFsGrpc) SetInodeAttributes(ctx context.Context, req *pb.SetInodeAttributesRequest) (*pb.SetInodeAttributesResponse, error) {
-	inode := fs.inodeById(fuseops.InodeID(req.InodeId))
+	inode, err := fs.inodeByIDOrErr(fuseops.InodeID(req.InodeId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 
@@ -445,7 +529,10 @@ func (fs *ClusterFsGrpc) SetInodeAttributes(ctx context.Context, req *pb.SetInod
 }
 
 func (fs *ClusterFsGrpc) ForgetInode(ctx context.Context, req *pb.ForgetInodeRequest) (*pb.ForgetInodeResponse, error) {
-	inode := fs.inodeById(fuseops.InodeID(req.InodeId))
+	inode, err := fs.inodeByIDOrErr(fuseops.InodeID(req.InodeId))
+	if err != nil {
+		return nil, err
+	}
 
 	inode.KeepOwnerLock()
 

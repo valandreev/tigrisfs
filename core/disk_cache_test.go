@@ -107,11 +107,90 @@ func TestDiskCache_RestoreState(t *testing.T) {
 	dc, _ := NewDiskCache(tmpDir, 1)
 
 	now := time.Now()
+	err = os.WriteFile(dc.getPath(10, 0), make([]byte, 2048), 0600)
+	assert.NoError(t, err)
+
 	// logical 0, physical 0
 	dc.RestoreState(10, 0, 0, 1024, now, false)
 	// logical 1024, physical 0 (split)
 	dc.RestoreState(10, 1024, 0, 2048, now.Add(time.Minute), false)
 
-	assert.Equal(t, int64(1024), dc.CurSize) // Second RestoreState for same physical file doesn't increase size
+	assert.Equal(t, int64(2048), dc.CurSize) // Uses physical file size from disk
 	assert.Equal(t, 1, dc.lru.Len())         // Same physical file = 1 LRU entry
+}
+
+func TestDiskCache_RestoreState_SkipsMissingFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "disk_cache_test_restore_missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dc, _ := NewDiskCache(tmpDir, 1)
+	dc.RestoreState(10, 0, 0, 1024, time.Now(), false)
+
+	assert.Equal(t, int64(0), dc.CurSize)
+	assert.Equal(t, 0, dc.lru.Len())
+}
+
+func TestDiskCache_CheckDiskSpace_CriticalDoesNotEvictAll(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "disk_cache_test_critical")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dc, err := NewDiskCache(tmpDir, 1)
+	assert.NoError(t, err)
+
+	block := make([]byte, 4096)
+	assert.NoError(t, dc.Put(1, 0, block, false))
+	assert.NoError(t, dc.Put(2, 0, block, false))
+	assert.NoError(t, dc.Put(3, 0, block, false))
+	assert.Equal(t, int64(3*4096), dc.CurSize)
+
+	// 4% free on total=100 => below 5% critical.
+	// Target free is 10%, so only 6 bytes are needed.
+	// We should evict oldest entries incrementally, not wipe the whole cache.
+	dc.DiskUsageChecker = func(path string) (uint64, uint64, error) {
+		return 4, 100, nil
+	}
+	dc.checkDiskSpace()
+
+	assert.True(t, dc.Disabled)
+	assert.Equal(t, int64(2*4096), dc.CurSize)
+
+	readBuf := make([]byte, 1)
+	_, err = dc.Get(1, 0, 0, readBuf)
+	assert.Error(t, err)
+	assert.True(t, os.IsNotExist(err))
+
+	_, err = dc.Get(2, 0, 0, readBuf)
+	assert.NoError(t, err)
+	_, err = dc.Get(3, 0, 0, readBuf)
+	assert.NoError(t, err)
+}
+
+func TestDiskCache_CheckDiskSpace_ReenableHysteresis(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "disk_cache_test_reenable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dc, err := NewDiskCache(tmpDir, 1)
+	assert.NoError(t, err)
+
+	dc.Disabled = true
+	dc.DiskUsageChecker = func(path string) (uint64, uint64, error) {
+		return 11, 100, nil
+	}
+	dc.checkDiskSpace()
+	assert.True(t, dc.Disabled)
+
+	dc.DiskUsageChecker = func(path string) (uint64, uint64, error) {
+		return 13, 100, nil
+	}
+	dc.checkDiskSpace()
+	assert.False(t, dc.Disabled)
 }

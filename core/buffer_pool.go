@@ -49,16 +49,22 @@ type BufferPool struct {
 
 func NewBufferPool(limit int64, gcInterval uint64) *BufferPool {
 	maxMem, _ := getCgroupAvailableMem()
+	available := uint64(limit)
+	if available == 0 {
+		available = 1 << 30
+	}
 	m, err := mem.VirtualMemory()
 	if err != nil {
-		panic(err)
+		bufferLog.Warnf("failed to read system memory stats, using conservative fallback: %v", err)
+	} else {
+		available = m.Available
 	}
 	if maxMem > 0 {
 		// divide cgroup limit by 2 by default
 		maxMem = maxMem / 2
 	}
-	if maxMem <= 0 || maxMem > m.Available {
-		maxMem = m.Available
+	if maxMem <= 0 || maxMem > available {
+		maxMem = available
 	}
 	if limit > int64(maxMem) {
 		limit = int64(maxMem)

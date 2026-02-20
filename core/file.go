@@ -68,10 +68,17 @@ func (fs *Goofys) partNum(offset uint64) uint64 {
 		// Sometimes we use partNum() to calculate total part count from end offset - allow it
 		return n
 	}
-	panic(fmt.Sprintf(
-		"Offset too large: %v, max supported file size with current part size configuration is %v",
-		offset, start,
-	))
+	// Avoid crashing the process on unexpected oversized offsets.
+	// Saturate to the last valid part number and let upper layers return I/O errors.
+	if n == 0 {
+		fuseLog.Errorf("partNum: offset %d is out of range and no part sizes are configured", offset)
+		return 0
+	}
+	fuseLog.Errorf(
+		"partNum: offset %d exceeds max supported size %d; saturating to last part %d",
+		offset, start, n-1,
+	)
+	return n - 1
 }
 
 func (fs *Goofys) partRange(num uint64) (offset uint64, size uint64) {
@@ -84,7 +91,15 @@ func (fs *Goofys) partRange(num uint64) (offset uint64, size uint64) {
 		start += s.PartSize * s.PartCount
 		n += s.PartCount
 	}
-	panic(fmt.Sprintf("Part number too large: %v", num))
+	if num == n {
+		// A boundary sentinel used by callers that compute total part count from end offset.
+		return start, 0
+	}
+	fuseLog.Errorf(
+		"partRange: part number %d exceeds max supported part number %d; returning EOF boundary",
+		num, n,
+	)
+	return start, 0
 }
 
 func (fs *Goofys) getMaxFileSize() (size uint64) {
@@ -670,11 +685,16 @@ func (fh *FileHandle) ReadFile(sOffset int64, sLen int64) (data [][]byte, bytesR
 func (fh *FileHandle) Release() {
 	// LookUpInode accesses fileHandles without mutex taken, so use atomics for now
 	n := atomic.AddInt32(&fh.inode.fileHandles, -1)
-	if n == -1 {
-		panic(fmt.Sprintf("Released more file handles than acquired, n = %v", n))
+	if n < 0 {
+		fuseLog.Errorf("Released more file handles than acquired for %v, n=%v; forcing counter to 0",
+			fh.inode.FullName(), n)
+		atomic.StoreInt32(&fh.inode.fileHandles, 0)
+		n = 0
 	}
 	if n == 0 {
-		fh.inode.Parent.addModified(-1)
+		if fh.inode.Parent != nil {
+			fh.inode.Parent.addModified(-1)
+		}
 	}
 	fh.inode.fs.WakeupFlusher()
 }

@@ -2715,6 +2715,22 @@ func (s *GoofysTest) testMountsNested(t *C, cloud StorageBackend,
 	}
 }
 
+func verifyFileData(t *C, mountPoint string, path string, content *string) {
+	if !strings.HasSuffix(mountPoint, "/") {
+		mountPoint = mountPoint + "/"
+	}
+	path = mountPoint + path
+	data, err := os.ReadFile(path)
+	comment := Commentf("failed while verifying %v", path)
+	if content != nil {
+		t.Assert(err, IsNil, comment)
+		t.Assert(strings.TrimSpace(string(data)), Equals, *content, comment)
+	} else {
+		t.Assert(err, Not(IsNil), comment)
+		t.Assert(strings.Contains(err.Error(), "no such file or directory"), Equals, true, comment)
+	}
+}
+
 // Checks if 2 sorted lists are equal. Returns a helpful error if they differ.
 func checkSortedListsAreEqual(l1, l2 []string) error {
 	i1, i2 := 0, 0

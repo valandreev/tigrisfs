@@ -674,7 +674,7 @@ func (b *ADLv2) PutBlob(param *PutBlobInput) (*PutBlobOutput, error) {
 		}, nil
 	} else {
 		if param.Size == nil {
-			panic("size cannot be nil")
+			return nil, fmt.Errorf("put blob size cannot be nil for file objects")
 		}
 
 		create, err := b.create(param.Key, adl2.File, param.ContentType,
@@ -809,7 +809,7 @@ func (b *ADLv2) MultipartBlobAdd(param *MultipartBlobAddInput) (*MultipartBlobAd
 	var commitData *ADLv2MultipartBlobCommitInput
 	var ok bool
 	if commitData, ok = param.Commit.backendData.(*ADLv2MultipartBlobCommitInput); !ok {
-		panic("Incorrect commit data type")
+		return nil, fmt.Errorf("incorrect ADLv2 multipart commit data type: %T", param.Commit.backendData)
 	}
 
 	// FIXME: Support out-of-order parts
@@ -844,7 +844,7 @@ func (b *ADLv2) MultipartBlobCommit(param *MultipartBlobCommitInput) (*Multipart
 	var commitData *ADLv2MultipartBlobCommitInput
 	var ok bool
 	if commitData, ok = param.backendData.(*ADLv2MultipartBlobCommitInput); !ok {
-		panic("Incorrect commit data type")
+		return nil, fmt.Errorf("incorrect ADLv2 multipart commit data type: %T", param.backendData)
 	}
 
 	defer func() {
@@ -1784,7 +1784,7 @@ func (client adl2PathClient) defaultRequest() *http.Request {
 			_, err := seeker.Seek(0, 0)
 			return &ReadSeekerCloser{seeker}, err
 		} else {
-			panic(fmt.Sprintf("Wrong type: %T", r.Body))
+			return nil, fmt.Errorf("unexpected request body type %T; expected io.ReadSeeker", r.Body)
 		}
 	}
 	return r

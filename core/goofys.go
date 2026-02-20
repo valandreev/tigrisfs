@@ -113,12 +113,17 @@ type Goofys struct {
 
 	zeroBuf []byte
 
-	diskCache   *DiskCache
-	diskWriteCh chan *DiskWriteRequest
+	diskCache    *DiskCache
+	diskWriteCh  chan *DiskWriteRequest
+	diskWriterWg sync.WaitGroup
+	shutdownOnce sync.Once
 
 	stats OpStats
 
 	NotifyCallback func(notifications []interface{})
+
+	pinMu        sync.Mutex
+	manualPinned map[fuseops.InodeID]map[uint64]struct{}
 
 	cloud atomic.Pointer[StorageBackend]
 }
@@ -135,15 +140,40 @@ func (g *Goofys) getCloud() StorageBackend {
 }
 
 type OpStats struct {
-	reads          int64
-	readHits       int64
-	writes         int64
-	flushes        int64
-	metadataReads  int64
-	metadataWrites int64
-	noops          int64
-	evicts         int64
-	ts             time.Time
+	reads           int64
+	readBytes       int64
+	readHits        int64
+	writes          int64
+	writeBytes      int64
+	readsTotal      int64
+	readBytesTotal  int64
+	writesTotal     int64
+	writeBytesTotal int64
+	flushes         int64
+	metadataReads   int64
+	metadataWrites  int64
+	noops           int64
+	evicts          int64
+	ts              time.Time
+}
+
+type TransferStatsSnapshot struct {
+	Reads      int64
+	ReadBytes  int64
+	Writes     int64
+	WriteBytes int64
+}
+
+func (fs *Goofys) TransferStatsSnapshot() TransferStatsSnapshot {
+	if fs == nil {
+		return TransferStatsSnapshot{}
+	}
+	return TransferStatsSnapshot{
+		Reads:      atomic.LoadInt64(&fs.stats.readsTotal),
+		ReadBytes:  atomic.LoadInt64(&fs.stats.readBytesTotal),
+		Writes:     atomic.LoadInt64(&fs.stats.writesTotal),
+		WriteBytes: atomic.LoadInt64(&fs.stats.writeBytesTotal),
+	}
 }
 
 var (
@@ -321,10 +351,15 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 		},
 		flushPriorities: make([]int64, MAX_FLUSH_PRIORITY+1),
 		diskWriteCh:     make(chan *DiskWriteRequest, 1000),
+		manualPinned:    make(map[fuseops.InodeID]map[uint64]struct{}),
 	}
 
 	for i := 0; i < 16; i++ {
-		go fs.DiskWriter()
+		fs.diskWriterWg.Add(1)
+		go func() {
+			defer fs.diskWriterWg.Done()
+			fs.DiskWriter()
+		}()
 	}
 
 	var prefix string
@@ -431,10 +466,13 @@ func newGoofys(ctx context.Context, bucket string, flags *cfg.FlagStorage,
 }
 
 func (fs *Goofys) Shutdown() {
-	atomic.StoreInt32(&fs.shutdown, 1)
-	close(fs.shutdownCh)
-	fs.WakeupFlusher()
-	fs.WakeupFlusher()
+	fs.shutdownOnce.Do(func() {
+		atomic.StoreInt32(&fs.shutdown, 1)
+		close(fs.shutdownCh)
+		fs.WakeupFlusher()
+		fs.WakeupFlusher()
+		fs.diskWriterWg.Wait()
+	})
 }
 
 func getShortenedEndpoint(endpoint string) string {
@@ -492,18 +530,36 @@ func (fs *Goofys) SigUsr1() {
 	debug.FreeOSMemory()
 }
 
-// Find the given inode. Panic if it doesn't exist.
+// Find the given inode.
 //
 // LOCKS_EXCLUDED(fs.mu)
-func (fs *Goofys) getInodeOrDie(id fuseops.InodeID) (inode *Inode) {
+func (fs *Goofys) getInode(id fuseops.InodeID) (inode *Inode) {
 	fs.mu.RLock()
 	inode = fs.inodes[id]
 	fs.mu.RUnlock()
-	if inode == nil {
-		panic(fmt.Sprintf("Unknown inode: %v", id))
-	}
-
 	return
+}
+
+// Find the given inode or return ESTALE if it no longer exists.
+//
+// LOCKS_EXCLUDED(fs.mu)
+func (fs *Goofys) getInodeOrErr(id fuseops.InodeID) (inode *Inode, err error) {
+	inode = fs.getInode(id)
+	if inode == nil {
+		return nil, syscall.ESTALE
+	}
+	return inode, nil
+}
+
+// Find the given inode.
+//
+// LOCKS_EXCLUDED(fs.mu)
+func (fs *Goofys) getInodeOrDie(id fuseops.InodeID) (inode *Inode) {
+	inode = fs.getInode(id)
+	if inode == nil {
+		fuseLog.Errorf("Unknown inode: %v", id)
+	}
+	return inode
 }
 
 func (fs *Goofys) AddDirHandle(dh *DirHandle) fuseops.HandleID {
@@ -534,8 +590,10 @@ func (fs *Goofys) StatPrinter() {
 		now := time.Now()
 		d := now.Sub(fs.stats.ts).Seconds()
 		reads := atomic.SwapInt64(&fs.stats.reads, 0)
+		readBytes := atomic.SwapInt64(&fs.stats.readBytes, 0)
 		readHits := atomic.SwapInt64(&fs.stats.readHits, 0)
 		writes := atomic.SwapInt64(&fs.stats.writes, 0)
+		writeBytes := atomic.SwapInt64(&fs.stats.writeBytes, 0)
 		flushes := atomic.SwapInt64(&fs.stats.flushes, 0)
 		metadataReads := atomic.SwapInt64(&fs.stats.metadataReads, 0)
 		metadataWrites := atomic.SwapInt64(&fs.stats.metadataWrites, 0)
@@ -550,10 +608,12 @@ func (fs *Goofys) StatPrinter() {
 			readsOr1 = 1
 		}
 		mainLog.Infof(
-			"I/O: %.2f read/s, %.2f %% hits, %.2f write/s; metadata: %.2f read/s, %.2f write/s, %.2f noop/s, %v alive, %.2f evict/s; %.2f flush/s",
+			"I/O: %.2f read/s, %.2f MB/s download, %.2f %% hits, %.2f write/s, %.2f MB/s upload; metadata: %.2f read/s, %.2f write/s, %.2f noop/s, %v alive, %.2f evict/s; %.2f flush/s",
 			float64(reads)/d,
+			float64(readBytes)/d/1024.0/1024.0,
 			float64(readHits)/readsOr1*100,
 			float64(writes)/d,
+			float64(writeBytes)/d/1024.0/1024.0,
 			float64(metadataReads)/d,
 			float64(metadataWrites)/d,
 			float64(noops)/d,
@@ -681,7 +741,7 @@ func (fs *Goofys) tryEvictToDisk(inode *Inode, buf *FileBuffer, toFs *int) {
 		}
 		if *toFs > 0 && fs.diskCache != nil {
 			// Evict to disk
-			err := fs.diskCache.Put(inode.Id, buf.offset, buf.data, buf.state == BUF_DIRTY)
+			err := fs.diskCache.Put(inode.Id, buf.offset, buf.data, buf.state == BUF_DIRTY || fs.isManuallyPinnedInode(inode.Id))
 			if err != nil {
 				*toFs = 0
 				mainLog.Errorf("Couldn't write %v bytes at offset %v to %v: %v",
@@ -919,6 +979,10 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 	if b.mounted {
 		return
 	}
+	cloud := b.cloud
+	if cloud == nil {
+		cloud = fs.getCloud()
+	}
 
 	name := strings.Trim(b.name, "/")
 
@@ -940,6 +1004,7 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 		if dirInode == nil {
 			dirInode = NewInode(fs, mp, dirName)
 			dirInode.ToDir()
+			dirInode.dir.mountCloud = mp.dir.mountCloud
 			dirInode.SetAttrTime(TIME_MAX)
 			dirInode.userMetadata = make(map[string][]byte)
 
@@ -956,6 +1021,7 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 	if prev == nil {
 		mountInode := NewInode(fs, mp, name)
 		mountInode.ToDir()
+		mountInode.dir.mountCloud = cloud
 		mountInode.dir.mountPrefix = b.prefix
 		mountInode.SetAttrTime(TIME_MAX)
 		mountInode.userMetadata = make(map[string][]byte)
@@ -965,7 +1031,8 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 		prev = mountInode
 	} else {
 		if !prev.isDir() {
-			panic(fmt.Sprintf("inode %v is not a directory", prev.FullName()))
+			fuseLog.Errorf("Cannot mount %q: existing inode %v is not a directory", b.name, prev.FullName())
+			return
 		}
 
 		// This inode might have some cached data from a parent mount.
@@ -974,6 +1041,7 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 		prev.resetDirTimeRec()
 		prev.mu.Lock()
 		defer prev.mu.Unlock()
+		prev.dir.mountCloud = cloud
 		prev.dir.mountPrefix = b.prefix
 		prev.SetAttrTime(TIME_MAX)
 
@@ -985,6 +1053,9 @@ func (fs *Goofys) mount(mp *Inode, b *Mount) {
 
 func (fs *Goofys) MountAll(mounts []*Mount) {
 	root := fs.getInodeOrDie(fuseops.RootInodeID)
+	if root == nil {
+		return
+	}
 
 	for _, m := range mounts {
 		fs.mount(root, m)
@@ -993,11 +1064,26 @@ func (fs *Goofys) MountAll(mounts []*Mount) {
 
 func (fs *Goofys) Mount(mount *Mount) {
 	root := fs.getInodeOrDie(fuseops.RootInodeID)
+	if root == nil {
+		return
+	}
 	fs.mount(root, mount)
+}
+
+func (fs *Goofys) MountBackend(name string, cloud StorageBackend, prefix string) {
+	fs.Mount(&Mount{
+		name:    name,
+		cloud:   cloud,
+		prefix:  prefix,
+		mounted: false,
+	})
 }
 
 func (fs *Goofys) Unmount(mountPoint string) {
 	mp := fs.getInodeOrDie(fuseops.RootInodeID)
+	if mp == nil {
+		return
+	}
 
 	fuseLog.Infof("Attempting to unmount %v", mountPoint)
 	path := strings.Split(strings.Trim(mountPoint, "/"), "/")
@@ -1205,7 +1291,8 @@ func expired(cache time.Time, ttl time.Duration) bool {
 // LOCKS_EXCLUDED(fs.mu)
 func (fs *Goofys) insertInode(parent *Inode, inode *Inode) {
 	if inode.Id != 0 {
-		panic(fmt.Sprintf("inode id is set: %v %v", inode.Name, inode.Id))
+		fuseLog.Errorf("insertInode called with pre-set inode id: name=%v id=%v", inode.Name, inode.Id)
+		return
 	}
 	fs.mu.Lock()
 	inode.Id = fs.allocateInodeId()

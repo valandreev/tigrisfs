@@ -906,7 +906,7 @@ func (s *S3Backend) copyObjectMultipart(size int64, from string, to string, mpuI
 ) (requestId string, err error) {
 	const MAX_S3_MPU_SIZE = 5 * 1024 * 1024 * 1024 * 1024
 	if size > MAX_S3_MPU_SIZE {
-		panic(fmt.Sprintf("object size: %v exceeds maximum S3 MPU size: %v", size, MAX_S3_MPU_SIZE))
+		return "", fmt.Errorf("object size %v exceeds maximum S3 MPU size %v", size, MAX_S3_MPU_SIZE)
 	}
 
 	if mpuId == "" {

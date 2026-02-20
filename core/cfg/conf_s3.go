@@ -113,11 +113,11 @@ func (c *S3Config) Init() *S3Config {
 
 func (c *S3Config) logSourceOfCredentials(flags *FlagStorage) {
 	if c.AccessKey != "" {
-		cfgLog.Info().Msgf("internal config: %v", c.AccessKey)
+		cfgLog.Info().Msg("internal config: static credentials configured")
 	} else if c.Profile != "" {
 		cfgLog.Info().Msgf("command line profile: %v", c.Profile)
 	} else if os.Getenv("AWS_ACCESS_KEY_ID") != "" {
-		cfgLog.Info().Msgf("env AWS_ACCESS_KEY_ID = %v", os.Getenv("AWS_ACCESS_KEY_ID"))
+		cfgLog.Info().Msg("env AWS_ACCESS_KEY_ID is set")
 	} else if os.Getenv("AWS_PROFILE") != "" {
 		cfgLog.Info().Msgf("env AWS_PROFILE = %v", os.Getenv("AWS_PROFILE"))
 	}
@@ -133,7 +133,7 @@ func (c *S3Config) logSourceOfCredentials(flags *FlagStorage) {
 func (c *S3Config) ToAwsConfig(flags *FlagStorage) (*aws.Config, error) {
 	c.logSourceOfCredentials(flags)
 
-	tr := &defaultHTTPTransport
+	tr := defaultHTTPTransport.Clone()
 	if flags.NoVerifySSL {
 		if tr.TLSClientConfig != nil {
 			tr.TLSClientConfig.InsecureSkipVerify = true

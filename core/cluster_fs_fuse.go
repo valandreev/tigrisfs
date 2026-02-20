@@ -66,6 +66,7 @@ func (fs *ClusterFsFuse) CreateFile(ctx context.Context, op *fuseops.CreateFileO
 	fs.routeByInodeId(
 		op.Parent,
 		false,
+		func() { err = syscall.ESTALE },
 		func(parent *Inode) {
 			pbInode, child, attr, handleId := fs.createFile(parent, op.Name, op.Mode)
 			if pbInode == nil {
@@ -147,6 +148,7 @@ func (fs *ClusterFsFuse) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (
 	fs.routeByInodeId(
 		op.Inode,
 		true,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			op.Handle = fs.openFile(inode)
 		},
@@ -169,6 +171,10 @@ func (fs *ClusterFsFuse) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (
 			if resp.AnotherOwner != nil {
 				return resp.AnotherOwner
 			}
+			if resp.Errno != 0 {
+				err = syscall.Errno(resp.Errno)
+				return nil
+			}
 
 			// 2nd phase
 			fs.Goofys.mu.Lock()
@@ -185,8 +191,11 @@ func (fs *ClusterFsFuse) OpenFile(ctx context.Context, op *fuseops.OpenFileOp) (
 }
 
 func (fs *ClusterFsFuse) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (err error) {
+	atomic.AddInt64(&fs.Goofys.stats.reads, 1)
+	atomic.AddInt64(&fs.Goofys.stats.readsTotal, 1)
 	fs.routeByFileHandle(
 		op.Handle,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			op.Data, op.BytesRead, err = fs.readFile(op.Handle, op.Offset, op.Size)
 		},
@@ -222,12 +231,19 @@ func (fs *ClusterFsFuse) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) (
 			return nil
 		},
 	)
+	if err == nil && op.BytesRead > 0 {
+		atomic.AddInt64(&fs.Goofys.stats.readBytes, int64(op.BytesRead))
+		atomic.AddInt64(&fs.Goofys.stats.readBytesTotal, int64(op.BytesRead))
+	}
 	return
 }
 
 func (fs *ClusterFsFuse) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) (err error) {
+	atomic.AddInt64(&fs.Goofys.stats.writes, 1)
+	atomic.AddInt64(&fs.Goofys.stats.writesTotal, 1)
 	fs.routeByFileHandle(
 		op.Handle,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			op.SuppressReuse, err = fs.writeFile(op.Handle, op.Offset, op.Data)
 		},
@@ -259,12 +275,17 @@ func (fs *ClusterFsFuse) WriteFile(ctx context.Context, op *fuseops.WriteFileOp)
 			return nil
 		},
 	)
+	if err == nil && len(op.Data) > 0 {
+		atomic.AddInt64(&fs.Goofys.stats.writeBytes, int64(len(op.Data)))
+		atomic.AddInt64(&fs.Goofys.stats.writeBytesTotal, int64(len(op.Data)))
+	}
 	return
 }
 
 func (fs *ClusterFsFuse) ReleaseFileHandle(ctx context.Context, op *fuseops.ReleaseFileHandleOp) (err error) {
 	fs.routeByFileHandle(
 		op.Handle,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			fs.releaseFileHandle(op.Handle)
 		},
@@ -303,6 +324,7 @@ func (fs *ClusterFsFuse) Unlink(ctx context.Context, op *fuseops.UnlinkOp) (err 
 	fs.routeByInodeId(
 		op.Parent,
 		false,
+		func() { err = syscall.ESTALE },
 		func(parent *Inode) {
 			err = fs.unlink(parent, op.Name)
 		},
@@ -342,6 +364,7 @@ func (fs *ClusterFsFuse) CreateSymlink(ctx context.Context, op *fuseops.CreateSy
 	fs.routeByInodeId(
 		op.Parent,
 		false,
+		func() { err = syscall.ESTALE },
 		func(parent *Inode) {
 			pbInode, childId, attr := fs.createSymlink(parent, op.Name, op.Target)
 			if pbInode == nil {
@@ -410,6 +433,7 @@ func (fs *ClusterFsFuse) ReadSymlink(ctx context.Context, op *fuseops.ReadSymlin
 	fs.routeByInodeId(
 		op.Inode,
 		false,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			op.Target, err = fs.readSymlink(inode)
 		},
@@ -450,6 +474,7 @@ func (fs *ClusterFsFuse) MkDir(ctx context.Context, op *fuseops.MkDirOp) (err er
 	fs.routeByInodeId(
 		op.Parent,
 		false,
+		func() { err = syscall.ESTALE },
 		func(parent *Inode) {
 			pbInode, child, attr := fs.mkDir(parent, op.Name, op.Mode)
 			if pbInode == nil {
@@ -525,8 +550,13 @@ func (fs *ClusterFsFuse) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (er
 	fs.routeByInodeId(
 		op.Inode,
 		true,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
-			op.Handle = fs.openDir(inode)
+			var openErr error
+			op.Handle, openErr = fs.openDir(inode)
+			if openErr != nil {
+				err = openErr
+			}
 		},
 		func(inode *Inode, inodeOwner NodeId) *pb.Owner {
 			// 1st phase
@@ -546,6 +576,14 @@ func (fs *ClusterFsFuse) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (er
 
 			if resp.AnotherOwner != nil {
 				return resp.AnotherOwner
+			}
+			if resp.Errno != 0 {
+				err = syscall.Errno(resp.Errno)
+				return nil
+			}
+			if inode == nil || inode.dir == nil {
+				err = syscall.ENOTDIR
+				return nil
 			}
 
 			// 2nd phase
@@ -568,6 +606,7 @@ func (fs *ClusterFsFuse) OpenDir(ctx context.Context, op *fuseops.OpenDirOp) (er
 func (fs *ClusterFsFuse) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (err error) {
 	fs.routeByDirHandle(
 		op.Handle,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			err = fs.readDir(op.Handle, op.Offset, op.Dst, &op.BytesRead)
 		},
@@ -592,6 +631,10 @@ func (fs *ClusterFsFuse) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (er
 			if resp.AnotherOwner != nil {
 				return resp.AnotherOwner
 			}
+			if resp.Errno != 0 {
+				err = syscall.Errno(resp.Errno)
+				return nil
+			}
 
 			copy(op.Dst, resp.Dst)
 			op.BytesRead = int(resp.BytesRead)
@@ -605,6 +648,7 @@ func (fs *ClusterFsFuse) ReadDir(ctx context.Context, op *fuseops.ReadDirOp) (er
 func (fs *ClusterFsFuse) ReleaseDirHandle(ctx context.Context, op *fuseops.ReleaseDirHandleOp) (err error) {
 	fs.routeByDirHandle(
 		op.Handle,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			fs.releaseDirHandle(op.Handle)
 		},
@@ -643,6 +687,7 @@ func (fs *ClusterFsFuse) LookUpInode(ctx context.Context, op *fuseops.LookUpInod
 	fs.routeByInodeId(
 		op.Parent,
 		false,
+		func() { err = syscall.ESTALE },
 		func(parent *Inode) {
 			var (
 				child  uint64
@@ -720,6 +765,7 @@ func (fs *ClusterFsFuse) RmDir(ctx context.Context, op *fuseops.RmDirOp) (err er
 	fs.routeByInodeId(
 		op.Parent,
 		false,
+		func() { err = syscall.ESTALE },
 		func(parent *Inode) {
 			err = fs.rmDir(parent, op.Name)
 		},
@@ -760,6 +806,7 @@ func (fs *ClusterFsFuse) GetInodeAttributes(ctx context.Context, op *fuseops.Get
 	fs.routeByInodeId(
 		op.Inode,
 		false,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			fs.getInodeAttributes(inode, &op.Attributes.Size, &op.Attributes.Mtime,
 				&op.Attributes.Ctime, &op.Attributes.Mode)
@@ -812,6 +859,7 @@ func (fs *ClusterFsFuse) SetInodeAttributes(ctx context.Context, op *fuseops.Set
 	fs.routeByInodeId(
 		op.Inode,
 		false,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			clusterLog.E(fs.setInodeAttributes(inode, &op.Attributes.Size, &op.Attributes.Mtime,
 				&op.Attributes.Ctime, &op.Attributes.Mode))
@@ -871,6 +919,7 @@ func (fs *ClusterFsFuse) ForgetInode(ctx context.Context, op *fuseops.ForgetInod
 	fs.routeByInodeId(
 		op.Inode,
 		false,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			inode.UpgradeToStateLock()
 			forget := inode.DeRef(int64(op.N))
@@ -964,8 +1013,8 @@ func MountCluster(
 	pb.RegisterFsGrpcServer(srv, &ClusterFsGrpc{ClusterFs: fs})
 
 	go func() {
-		if err = srv.Start(); err != nil {
-			panic(err)
+		if startErr := srv.Start(); startErr != nil {
+			mainLog.Errorf("cluster gRPC server exited: %v", startErr)
 		}
 	}()
 

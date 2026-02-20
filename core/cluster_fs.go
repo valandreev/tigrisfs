@@ -220,6 +220,10 @@ func (fs *ClusterFs) releaseFileHandle(handleId fuseops.HandleID) {
 	defer fs.Goofys.mu.Unlock()
 
 	fh := fs.Goofys.fileHandles[handleId]
+	if fh == nil {
+		delete(fs.Goofys.fileHandles, handleId)
+		return
+	}
 	fh.Release()
 	delete(fs.Goofys.fileHandles, handleId)
 }
@@ -229,6 +233,9 @@ func (fs *ClusterFs) readFile(handleId fuseops.HandleID, offset int64, size int6
 	fs.Goofys.mu.RLock()
 	fh := fs.Goofys.fileHandles[handleId]
 	fs.Goofys.mu.RUnlock()
+	if fh == nil {
+		return nil, 0, syscall.ESTALE
+	}
 
 	return fh.ReadFile(offset, size)
 }
@@ -238,6 +245,9 @@ func (fs *ClusterFs) writeFile(handleId fuseops.HandleID, offset int64, data []b
 	fs.Goofys.mu.RLock()
 	fh := fs.Goofys.fileHandles[handleId]
 	fs.Goofys.mu.RUnlock()
+	if fh == nil {
+		return false, syscall.ESTALE
+	}
 
 	// fuse binding leaves extra room for header, so we
 	// account for it when we decide whether to do "zero-copy" write
@@ -389,20 +399,29 @@ func (fs *ClusterFs) rmDir(parent *Inode, name string) error {
 }
 
 // REQUIRED_LOCK(inode.KeepOwnerLock)
-func (fs *ClusterFs) openDir(inode *Inode) fuseops.HandleID {
+func (fs *ClusterFs) openDir(inode *Inode) (fuseops.HandleID, error) {
+	if inode == nil || inode.dir == nil {
+		return 0, syscall.ENOTDIR
+	}
 	dh := NewDirHandle(inode)
 	inode.mu.Lock()
 	inode.dir.handles = append(inode.dir.handles, dh)
 	atomic.AddInt32(&inode.fileHandles, 1)
 	inode.mu.Unlock()
 	handleId := fs.Goofys.AddDirHandle(dh)
-	return handleId
+	return handleId, nil
 }
 
 func (fs *ClusterFs) releaseDirHandle(handleId fuseops.HandleID) {
 	fs.Goofys.mu.RLock()
 	dh := fs.Goofys.dirHandles[handleId]
 	fs.Goofys.mu.RUnlock()
+	if dh == nil {
+		fs.Goofys.mu.Lock()
+		delete(fs.Goofys.dirHandles, handleId)
+		fs.Goofys.mu.Unlock()
+		return
+	}
 
 	clusterLog.E(dh.CloseDir())
 
@@ -416,6 +435,9 @@ func (fs *ClusterFs) readDir(handleId fuseops.HandleID, offset fuseops.DirOffset
 	fs.Goofys.mu.RLock()
 	dh := fs.Goofys.dirHandles[handleId]
 	fs.Goofys.mu.RUnlock()
+	if dh == nil {
+		return syscall.ESTALE
+	}
 
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
@@ -436,7 +458,6 @@ func (fs *ClusterFs) readDir(handleId fuseops.HandleID, offset fuseops.DirOffset
 	for {
 		e, err := dh.ReadDir()
 		if err != nil {
-			dh.mu.Unlock()
 			err = mapAwsError(err)
 			return err
 		}
@@ -504,6 +525,7 @@ func (fs *ClusterFs) lookUpInode2(inode *Inode) (pbAttr *pb.Attributes, err erro
 	fs.route(
 		func() *Inode { return inode },
 		false,
+		func() { err = syscall.ESTALE },
 		func(inode *Inode) {
 			inode.UpgradeToStateLock()
 			pbAttr = inode.pbAttr()
@@ -596,19 +618,27 @@ func (fs *ClusterFs) setInodeAttributes(inode *Inode, size *uint64, mtime *time.
 // getting of inode
 
 func (fs *ClusterFs) inodeById(inodeId fuseops.InodeID) *Inode {
-	return fs.Goofys.getInodeOrDie(inodeId)
+	return fs.Goofys.getInode(inodeId)
 }
 
 func (fs *ClusterFs) inodeByFileHandleId(handleId fuseops.HandleID) *Inode {
 	fs.Goofys.mu.RLock()
 	defer fs.Goofys.mu.RUnlock()
-	return fs.Goofys.fileHandles[handleId].inode
+	fh := fs.Goofys.fileHandles[handleId]
+	if fh == nil {
+		return nil
+	}
+	return fh.inode
 }
 
 func (fs *ClusterFs) inodeByDirHandleId(handleId fuseops.HandleID) *Inode {
 	fs.Goofys.mu.RLock()
 	defer fs.Goofys.mu.RUnlock()
-	return fs.Goofys.dirHandles[handleId].inode
+	dh := fs.Goofys.dirHandles[handleId]
+	if dh == nil {
+		return nil
+	}
+	return dh.inode
 }
 
 // stealing
@@ -962,6 +992,7 @@ func (fs *ClusterFs) broadcastForget2(inodeId fuseops.InodeID) {
 func (fs *ClusterFs) routeByInodeId(
 	inodeId fuseops.InodeID,
 	trySteal bool,
+	onMissing func(),
 	execLocally func(inode *Inode),
 	tryExecRemotely func(inode *Inode, inodeOwner NodeId) *pb.Owner,
 ) {
@@ -970,6 +1001,7 @@ func (fs *ClusterFs) routeByInodeId(
 			return fs.inodeById(inodeId)
 		},
 		trySteal,
+		onMissing,
 		execLocally,
 		tryExecRemotely,
 	)
@@ -977,6 +1009,7 @@ func (fs *ClusterFs) routeByInodeId(
 
 func (fs *ClusterFs) routeByFileHandle(
 	handleId fuseops.HandleID,
+	onMissing func(),
 	execLocally func(inode *Inode),
 	tryExecRemotely func(inode *Inode, inodeOwner NodeId) *pb.Owner,
 ) {
@@ -985,6 +1018,7 @@ func (fs *ClusterFs) routeByFileHandle(
 			return fs.inodeByFileHandleId(handleId)
 		},
 		false,
+		onMissing,
 		execLocally,
 		tryExecRemotely,
 	)
@@ -992,6 +1026,7 @@ func (fs *ClusterFs) routeByFileHandle(
 
 func (fs *ClusterFs) routeByDirHandle(
 	handleId fuseops.HandleID,
+	onMissing func(),
 	execLocally func(inode *Inode),
 	tryExecRemotely func(inode *Inode, inodeOwner NodeId) *pb.Owner,
 ) {
@@ -1000,6 +1035,7 @@ func (fs *ClusterFs) routeByDirHandle(
 			return fs.inodeByDirHandleId(handleId)
 		},
 		false,
+		onMissing,
 		execLocally,
 		tryExecRemotely,
 	)
@@ -1010,11 +1046,18 @@ const READY_OWNER_BACKOFF = 100 * time.Millisecond
 func (fs *ClusterFs) route(
 	getInode func() *Inode,
 	trySteal bool,
+	onMissing func(),
 	execLocally func(inode *Inode),
 	tryExecRemotely func(inode *Inode, inodeOwner NodeId) *pb.Owner,
 ) {
 	for {
 		inode := getInode()
+		if inode == nil {
+			if onMissing != nil {
+				onMissing()
+			}
+			return
+		}
 		inode.KeepOwnerLock()
 		if trySteal {
 			_, _ = fs.trySteal(inode)

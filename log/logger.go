@@ -21,6 +21,7 @@ import (
 	"io"
 	glog "log"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -38,9 +39,64 @@ var DefaultLogConfig = &LogConfig{
 var (
 	mu      sync.Mutex
 	loggers = make(map[string]*LogHandle)
+
+	lineMu     sync.RWMutex
+	lineSubs   = make(map[int]chan string)
+	nextLineID int
 )
 
 var logWriter io.Writer = os.Stderr
+
+type broadcastWriter struct {
+	out     io.Writer
+	mu      sync.Mutex
+	pending string
+}
+
+func newBroadcastWriter(out io.Writer) io.Writer {
+	return &broadcastWriter{out: out}
+}
+
+func (w *broadcastWriter) Write(p []byte) (int, error) {
+	n, err := w.out.Write(p)
+	if n <= 0 {
+		return n, err
+	}
+
+	w.mu.Lock()
+	w.pending += string(p[:n])
+	for {
+		idx := strings.IndexByte(w.pending, '\n')
+		if idx == -1 {
+			break
+		}
+		line := strings.TrimRight(w.pending[:idx], "\r")
+		publishLine(line)
+		w.pending = w.pending[idx+1:]
+	}
+	// Bound memory usage for malformed/non-terminated lines.
+	if len(w.pending) > 8192 {
+		publishLine(w.pending)
+		w.pending = ""
+	}
+	w.mu.Unlock()
+
+	return n, err
+}
+
+func publishLine(line string) {
+	if line == "" {
+		return
+	}
+	lineMu.RLock()
+	defer lineMu.RUnlock()
+	for _, ch := range lineSubs {
+		select {
+		case ch <- line:
+		default:
+		}
+	}
+}
 
 func InitLoggerRedirect(logFileName string, defLog bool) error {
 	if logFileName == "stderr" || logFileName == "/dev/stderr" || logFileName == "" {
@@ -159,6 +215,43 @@ func GetLogger(name string) *LogHandle {
 	return logger
 }
 
+func ListLoggers() []string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	names := make([]string, 0, len(loggers))
+	for name := range loggers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func SubscribeLines(buffer int) (int, <-chan string) {
+	if buffer <= 0 {
+		buffer = 256
+	}
+	ch := make(chan string, buffer)
+
+	lineMu.Lock()
+	nextLineID++
+	id := nextLineID
+	lineSubs[id] = ch
+	lineMu.Unlock()
+
+	return id, ch
+}
+
+func UnsubscribeLines(id int) {
+	lineMu.Lock()
+	ch, ok := lineSubs[id]
+	if ok {
+		delete(lineSubs, id)
+		close(ch)
+	}
+	lineMu.Unlock()
+}
+
 func GetStdLogger(l *zerolog.Logger) *glog.Logger {
 	return glog.New(l, "", 0)
 }
@@ -198,16 +291,17 @@ func NewLogger(config *LogConfig, module string, colorized bool, writer io.Write
 	var logger zerolog.Logger
 	if config.Format == "console" {
 		output := zerolog.ConsoleWriter{
-			Out:        os.Stdout,
+			Out:        newBroadcastWriter(os.Stdout),
 			TimeFormat: time.StampMicro,
 		}
 		output.NoColor = !colorized
 		output.FormatCaller = func(i any) string {
 			return consoleFormatCallerWithModule(i, module)
 		}
-		logger = zerolog.New(output).Level(lvl).With().Timestamp().CallerWithSkipFrameCount(2).Stack().Logger()
+		logger = zerolog.New(output).Level(lvl).With().Timestamp().CallerWithSkipFrameCount(2).Stack().
+			Str("module", module).Logger()
 	} else {
-		logger = zerolog.New(writer).Level(lvl).With().Timestamp().CallerWithSkipFrameCount(2).Stack().
+		logger = zerolog.New(newBroadcastWriter(writer)).Level(lvl).With().Timestamp().CallerWithSkipFrameCount(2).Stack().
 			Str("module", module).Logger()
 	}
 

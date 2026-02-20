@@ -284,7 +284,7 @@ func azureFindAccount(client azblob.AccountsClient, account string) (*azblob.End
 
 func AzureBlobConfig(endpoint string, location string, storageType string) (config AZBlobConfig, err error) {
 	if storageType != "blob" && storageType != "dfs" {
-		panic(fmt.Sprintf("unknown storage type: %v", storageType))
+		return config, fmt.Errorf("unknown storage type: %v", storageType)
 	}
 
 	account := os.Getenv("AZURE_STORAGE_ACCOUNT")

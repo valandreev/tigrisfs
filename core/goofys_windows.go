@@ -604,6 +604,7 @@ func (fs *GoofysWin) Read(path string, buff []byte, ofst int64, fhId uint64) (re
 	}
 
 	atomic.AddInt64(&fs.stats.reads, 1)
+	atomic.AddInt64(&fs.stats.readsTotal, 1)
 
 	fs.mu.RLock()
 	fh := fs.fileHandles[fuseops.HandleID(fhId)]
@@ -615,6 +616,10 @@ func (fs *GoofysWin) Read(path string, buff []byte, ofst int64, fhId uint64) (re
 	data, bytesRead, err := fh.ReadFile(ofst, int64(len(buff)))
 	if err != nil {
 		return mapWinError(err)
+	}
+	if bytesRead > 0 {
+		atomic.AddInt64(&fs.stats.readBytes, int64(bytesRead))
+		atomic.AddInt64(&fs.stats.readBytesTotal, int64(bytesRead))
 	}
 	done := 0
 	for i := 0; i < len(data); i++ {
@@ -635,6 +640,7 @@ func (fs *GoofysWin) Write(path string, buff []byte, ofst int64, fhId uint64) (r
 	}
 
 	atomic.AddInt64(&fs.stats.writes, 1)
+	atomic.AddInt64(&fs.stats.writesTotal, 1)
 
 	fs.mu.RLock()
 	fh := fs.fileHandles[fuseops.HandleID(fhId)]
@@ -646,6 +652,10 @@ func (fs *GoofysWin) Write(path string, buff []byte, ofst int64, fhId uint64) (r
 	err := fh.WriteFile(ofst, buff, true)
 	if err != nil {
 		return mapWinError(err)
+	}
+	if len(buff) > 0 {
+		atomic.AddInt64(&fs.stats.writeBytes, int64(len(buff)))
+		atomic.AddInt64(&fs.stats.writeBytesTotal, int64(len(buff)))
 	}
 
 	return len(buff)
@@ -751,6 +761,9 @@ func (fs *GoofysWin) Opendir(path string) (ret int, dhId uint64) {
 	}
 
 	dh := inode.OpenDir()
+	if dh == nil {
+		return mapWinError(syscall.ENOTDIR), 0
+	}
 	handleID := fs.AddDirHandle(dh)
 
 	return 0, uint64(handleID)
@@ -981,7 +994,8 @@ func (fs *GoofysWin) Notify(notifications []interface{}) {
 			child = v.Name
 			op = fuse.NOTIFY_CHMOD | fuse.NOTIFY_CHOWN | fuse.NOTIFY_UTIME | fuse.NOTIFY_CHFLAGS | fuse.NOTIFY_TRUNCATE
 		default:
-			panic("Unexpected notification")
+			fuseLog.Warnf("Ignoring unexpected notification type: %T", v)
+			continue
 		}
 		fs.mu.RLock()
 		in := fs.inodes[parent]
