@@ -32,6 +32,12 @@ When mounted with the [Tigris](https://www.tigrisdata.com) backend TigrisFS supp
   * Auto-preload content of small files on directory list in single request.
   * Allows to auto prefetch directory data to the region on list.
 
+## Desktop GUI
+
+The repository also includes a desktop app (`tigrisfs-gui`) for profile-based connection management, bucket discovery, unified namespace mounts, cache controls, pin/unpin workflows, integration health, and advanced logs.
+
+See the full usage guide: [docs/gui-app-usage.md](docs/gui-app-usage.md).
+
 # Installation
 
 ## Recommended: One-line install
