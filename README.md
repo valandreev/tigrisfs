@@ -163,6 +163,16 @@ macOS Finder host + appex:
 ./scripts/package_finder_sync.sh ./tigrisfs-gui
 ```
 
+macOS Developer ID signing + notarization (for distribution):
+
+```bash
+CODESIGN_IDENTITY="Developer ID Application: <Name> (<TEAM_ID>)" \
+NOTARY_PROFILE="tigrisfs-notary" \
+./scripts/notarize_macos_release.sh dist/release-<timestamp>-darwin-arm64
+```
+
+Detailed guide: [docs/macos-release-signing.md](docs/macos-release-signing.md).
+
 Windows Explorer extension build/register/restart (run as Administrator on Windows):
 
 ```powershell
