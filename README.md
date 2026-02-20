@@ -5,6 +5,12 @@
 
 TigrisFS is a high-performance FUSE-based file system for S3-compatible object storage written in Go.
 
+This fork is focused on turning TigrisFS into a production desktop client experience for S3 object storage:
+- fast streaming access with local cache and selective pinning
+- profile-based mount management
+- native Finder/Explorer integration
+- operational visibility (cache/disk usage, transfer rates, health, logs)
+
 # Overview
 
 TigrisFS allows you to mount an S3 or compatible object store bucket as a local file system.
@@ -37,6 +43,41 @@ When mounted with the [Tigris](https://www.tigrisdata.com) backend TigrisFS supp
 The repository also includes a desktop app (`tigrisfs-gui`) for profile-based connection management, bucket discovery, unified namespace mounts, cache controls, pin/unpin workflows, integration health, and advanced logs.
 
 See the full usage guide: [docs/gui-app-usage.md](docs/gui-app-usage.md).
+
+## What Changed In This Fork
+
+Major areas added/improved:
+
+- Security hardening:
+  - credentials are stored in OS keychain/credential manager (not persisted in `config.json`)
+  - TLS verification is enabled by default (`Skip SSL` defaults to off)
+- Profile-driven GUI workflows:
+  - create/save/delete connection profiles
+  - probe S3 endpoint for accessible buckets
+  - mount/unmount directly from GUI
+- Multi-bucket unified namespace mounts:
+  - one mountpoint with buckets as top-level folders
+  - optional per-profile auto-mount behavior
+- Cache and transfer observability:
+  - mount root/cache root disk usage
+  - per-mount and aggregate upload/download rates
+  - pin/unpin controls for files and folders
+- Native file-manager integration:
+  - macOS Finder integration (actions + Finder Sync host/appex packaging)
+  - Windows Explorer integration (context actions + overlay extension registration path)
+  - GUI extension health checks and repair actions
+- Advanced diagnostics:
+  - live log stream with module/level/text filters
+  - runtime log-level control and export
+
+## What This Is Supposed To Be
+
+The target is a solid, professional S3 filesystem client:
+- reliable under long-running mount workloads
+- cache-aware and predictable under disk pressure
+- secure by default
+- operator-friendly with built-in health and telemetry
+- easy to use for both single-bucket and unified multi-bucket workflows
 
 # Installation
 
