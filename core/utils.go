@@ -188,10 +188,10 @@ func NewSemaphore(n int) *Semaphore {
 }
 
 // P (proberen/wait) acquires n resources from the semaphore, blocking until they are available.
-// It panics if the context is canceled.
 func (s *Semaphore) P(n int) {
 	if err := s.sem.Acquire(context.Background(), int64(n)); err != nil {
-		panic(err)
+		// Background context should never be canceled; keep behavior non-fatal.
+		mainLog.Warnf("semaphore acquire failed: %v", err)
 	}
 }
 

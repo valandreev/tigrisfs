@@ -37,6 +37,15 @@ build-debug:
 install:
 	go install $(BUILD_PARAM)
 
+build-gui:
+	go build $(BUILD_PARAM) -o tigrisfs-gui ./gui
+
+build-finder-sync:
+	./scripts/package_finder_sync.sh ./tigrisfs-gui
+
+build-gui-windows:
+	GOOS=windows CGO_ENABLED=1 go build -ldflags "-H windowsgui -X github.com/tigrisdata/tigrisfs/core/cfg.Version=$(VERSION) -X github.com/tigrisdata/tigrisfs/core/cfg.DefaultEndpoint=$(ENDPOINT)" -o tigrisfs-gui.exe ./gui
+
 # Setup local development environment.
 setup: get-deps
 	git config core.hooksPath ./.gitconfig/hooks
@@ -46,6 +55,6 @@ protoc:
 	protoc --go_out=. --experimental_allow_proto3_optional --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative core/pb/*.proto
 
 clean:
-	rm -f tigrisfs
+	rm -f tigrisfs tigrisfs-gui tigrisfs-gui.exe
 	rm -f core/mount_GoofysTest.*log
 	findmnt -t fuse.tigrisfs -n -o TARGET|xargs -r umount

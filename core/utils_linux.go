@@ -24,3 +24,14 @@ const (
 	XATTR_REPLACE = unix.XATTR_REPLACE
 	ENOATTR       = unix.ENODATA
 )
+
+func GetDiskFreeSpace(path string) (uint64, uint64, error) {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(path, &stat); err != nil {
+		return 0, 0, err
+	}
+
+	available := uint64(stat.Bavail) * uint64(stat.Bsize)
+	total := uint64(stat.Blocks) * uint64(stat.Bsize)
+	return available, total, nil
+}

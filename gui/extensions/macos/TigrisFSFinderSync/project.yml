@@ -1,0 +1,39 @@
+name: TigrisFSFinderSync
+options:
+  bundleIdPrefix: com.tigrisdata.tigrisfs
+  deploymentTarget:
+    macOS: '12.0'
+settings:
+  base:
+    SWIFT_VERSION: 5.9
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 1.0.0
+targets:
+  TigrisFSFinderHost:
+    type: application
+    platform: macOS
+    info:
+      path: FinderHost/Info.plist
+    sources:
+      - FinderHost
+    dependencies:
+      - target: TigrisFSFinderSync
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tigrisdata.tigrisfs.finderhost
+        PRODUCT_NAME: TigrisFS Finder Host
+        CODE_SIGN_STYLE: Automatic
+
+  TigrisFSFinderSync:
+    type: app-extension
+    platform: macOS
+    info:
+      path: FinderSyncExt/Info.plist
+    sources:
+      - FinderSyncExt
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tigrisdata.tigrisfs.findersync
+        PRODUCT_NAME: TigrisFSFinderSync
+        CODE_SIGN_STYLE: Automatic

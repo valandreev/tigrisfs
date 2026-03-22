@@ -298,16 +298,26 @@ func (inode *Inode) cloud() (cloud StorageBackend, path string) {
 	}
 
 	p := dir
-	for ; p.Parent != nil; p = p.Parent {
+	for p != nil {
+		if p.dir != nil && p.dir.mountCloud != nil {
+			cloud = p.dir.mountCloud
+			prefix = p.dir.mountPrefix
+			break
+		}
+		if p.Parent == nil {
+			cloud = p.fs.getCloud()
+			if p.dir != nil {
+				prefix = p.dir.mountPrefix
+			}
+			break
+		}
 		if path == "" {
 			path = p.Name
-		} else if p.Parent != nil {
-			// don't prepend if I am already the root node
+		} else {
 			path = p.Name + "/" + path
 		}
+		p = p.Parent
 	}
-
-	cloud = p.fs.getCloud()
 	// the error backend produces a mount.err file
 	// at the root and is not aware of prefix
 	_, isErr := cloud.(StorageBackendInitError)
@@ -320,10 +330,6 @@ func (inode *Inode) cloud() (cloud StorageBackend, path string) {
 			err := c.Init("")
 			isErr = err != nil
 		}
-	}
-
-	if !isErr {
-		prefix = p.dir.mountPrefix
 	}
 
 	if path == "" {

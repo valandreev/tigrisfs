@@ -35,6 +35,38 @@ type GlobalState struct {
 	NextHandleID fuseops.HandleID
 }
 
+func prefixUpperBound(prefix []byte) []byte {
+	upper := append([]byte(nil), prefix...)
+	for i := len(upper) - 1; i >= 0; i-- {
+		if upper[i] == 0xFF {
+			continue
+		}
+		upper[i]++
+		return upper[:i+1]
+	}
+	return nil
+}
+
+func deletePrefixKeys(db *pebble.DB, batch *pebble.Batch, prefix string) error {
+	prefixBytes := []byte(prefix)
+	iter, err := db.NewIter(&pebble.IterOptions{
+		LowerBound: prefixBytes,
+		UpperBound: prefixUpperBound(prefixBytes),
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		keyCopy := append([]byte(nil), iter.Key()...)
+		if err := batch.Delete(keyCopy, pebble.NoSync); err != nil {
+			return err
+		}
+	}
+	return iter.Error()
+}
+
 func (fs *Goofys) SaveCache() error {
 	if fs.flags.CachePath == "" {
 		return nil
@@ -54,6 +86,16 @@ func (fs *Goofys) SaveCache() error {
 
 	batch := db.NewBatch()
 	defer batch.Close()
+
+	if err := deletePrefixKeys(db, batch, "inode:"); err != nil {
+		return err
+	}
+	if err := deletePrefixKeys(db, batch, "dir:"); err != nil {
+		return err
+	}
+	if err := deletePrefixKeys(db, batch, "file:"); err != nil {
+		return err
+	}
 
 	fs.mu.RLock()
 	globalState := GlobalState{

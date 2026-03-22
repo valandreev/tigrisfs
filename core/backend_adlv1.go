@@ -597,7 +597,7 @@ func (b *ADLv1) MultipartBlobAdd(param *MultipartBlobAddInput) (*MultipartBlobAd
 	var commitData *ADLv1MultipartBlobCommitInput
 	var ok bool
 	if commitData, ok = param.Commit.backendData.(*ADLv1MultipartBlobCommitInput); !ok {
-		panic("Incorrect commit data type")
+		return nil, fmt.Errorf("incorrect ADLv1 multipart commit data type: %T", param.Commit.backendData)
 	}
 
 	commitData.Size += param.Size
@@ -630,7 +630,7 @@ func (b *ADLv1) MultipartBlobCommit(param *MultipartBlobCommitInput) (*Multipart
 	var commitData *ADLv1MultipartBlobCommitInput
 	var ok bool
 	if commitData, ok = param.backendData.(*ADLv1MultipartBlobCommitInput); !ok {
-		panic("Incorrect commit data type")
+		return nil, fmt.Errorf("incorrect ADLv1 multipart commit data type: %T", param.backendData)
 	}
 
 	leaseId, err := uuid.FromString(*param.UploadId)

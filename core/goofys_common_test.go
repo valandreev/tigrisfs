@@ -617,7 +617,10 @@ func (s *GoofysTest) SetUpTest(t *C) {
 		t.Assert(err, IsNil)
 		t.Assert(s.cloud, NotNil)
 	default:
-		t.Fatal("Unsupported backend")
+		if cloud == "" {
+			t.Skip("Skipping integration test: CLOUD is not set (expected one of s3,gcs,azblob,adlv1,adlv2)")
+		}
+		t.Skip("Skipping integration test: unsupported CLOUD backend " + cloud)
 	}
 
 	s.isTigris = TigrisDetected(flags)

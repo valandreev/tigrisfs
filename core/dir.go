@@ -38,6 +38,7 @@ type SlurpGap struct {
 
 type DirInodeData struct {
 	mountPrefix string
+	mountCloud  StorageBackend
 
 	// lastOpenDirIdx refers to readdir of the Children
 	lastOpenDirIdx  int
@@ -113,7 +114,8 @@ func (inode *Inode) OpenDir() (dh *DirHandle) {
 
 	dir := inode.dir
 	if dir == nil {
-		panic(fmt.Sprintf("%v is not a directory", inode.FullName()))
+		fuseLog.Errorf("OpenDir on non-directory inode %v", inode.FullName())
+		return nil
 	}
 
 	if isS3 && parent != nil && inode.fs.flags.StatCacheTTL != 0 {
@@ -861,7 +863,7 @@ func (parent *Inode) removeExpired(from string) {
 func (dh *DirHandle) ReadDir() (inode *Inode, err error) {
 	parent := dh.inode
 	if parent.dir == nil {
-		panic("ReadDir non-directory " + parent.FullName())
+		return nil, syscall.ENOTDIR
 	}
 	parent.mu.Lock()
 	defer parent.mu.Unlock()
@@ -950,14 +952,15 @@ func (inode *Inode) resetDirTimeRec() {
 // ACQUIRES_LOCK(inode.mu)
 func (inode *Inode) ResetForUnmount() {
 	if inode.dir == nil {
-		panic(fmt.Sprintf("ResetForUnmount called on a non-directory. name:%v",
-			inode.Name))
+		fuseLog.Warnf("ResetForUnmount called on non-directory inode %v", inode.Name)
+		return
 	}
 
 	inode.mu.Lock()
 	// First reset the cloud info for this directory. After that, any read and
 	// write operations under this directory will not know about this cloud.
 	inode.dir.mountPrefix = ""
+	inode.dir.mountCloud = nil
 
 	// Clear metadata.
 	// Set the metadata values to nil instead of deleting them so that
@@ -1056,8 +1059,8 @@ func (parent *Inode) removeChildUnlocked(inode *Inode) {
 
 	i := sort.Search(l, parent.findInodeFunc(inode.Name))
 	if i >= l || parent.dir.Children[i].Name != inode.Name {
-		panic(fmt.Sprintf("%v.removeName(%v) but child not found: %v",
-			parent.FullName(), inode.Name, i))
+		fuseLog.Warnf("%v.removeName(%v): child not found", parent.FullName(), inode.Name)
+		return
 	}
 
 	// POSIX allows parallel readdir() and modifications,
@@ -1139,7 +1142,9 @@ func (parent *Inode) insertChildUnlocked(inode *Inode) {
 		parent.dir.Children = append(parent.dir.Children, inode)
 	} else {
 		if parent.dir.Children[i].Name == inode.Name {
-			panic(fmt.Sprintf("double insert of %v", parent.getChildName(inode.Name)))
+			fuseLog.Warnf("double insert of %v", parent.getChildName(inode.Name))
+			inode.DeRef(1)
+			return
 		}
 
 		// Increment generation to invalidate all directory handles
@@ -1603,7 +1608,8 @@ func (parent *Inode) addModified(inc int64) {
 			n := atomic.AddInt64(&parent.dir.ModifiedChildren, inc)
 			if n < 0 {
 				parent.DumpTree("add_modified", true, true)
-				panic(fmt.Errorf("BUG: ModifiedChildren of %v < 0, n=%v, inc=%v", parent.FullName(), n, inc))
+				fuseLog.Errorf("BUG: ModifiedChildren of %v < 0, n=%v, inc=%v", parent.FullName(), n, inc)
+				atomic.StoreInt64(&parent.dir.ModifiedChildren, 0)
 			}
 		}
 		parent = parent.Parent
@@ -2140,7 +2146,7 @@ func (parent *Inode) LookUpInodeMaybeDir(name string) (*BlobItemOutput, error) {
 
 	cloud, parentKey := parent.cloud()
 	if cloud == nil {
-		panic("s3 disabled")
+		return nil, syscall.EIO
 	}
 	key := appendChildName(parentKey, name)
 	parent.logFuse("Inode.LookUp", key)

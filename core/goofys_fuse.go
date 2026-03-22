@@ -94,7 +94,10 @@ func (fs *GoofysFuse) GetInodeAttributes(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&inode.CacheState) == ST_DEAD {
 		// Stale inode
@@ -116,7 +119,10 @@ func (fs *GoofysFuse) GetXattr(ctx context.Context,
 		return syscall.ENOSYS
 	}
 
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
@@ -150,7 +156,10 @@ func (fs *GoofysFuse) ListXattr(ctx context.Context,
 		return syscall.ENOSYS
 	}
 
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
@@ -191,7 +200,10 @@ func (fs *GoofysFuse) RemoveXattr(ctx context.Context,
 		return syscall.ENOSYS
 	}
 
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
@@ -211,7 +223,10 @@ func (fs *GoofysFuse) SetXattr(ctx context.Context,
 		return syscall.ENOSYS
 	}
 
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
@@ -232,7 +247,10 @@ func (fs *GoofysFuse) SetXattr(ctx context.Context,
 func (fs *GoofysFuse) CreateSymlink(ctx context.Context,
 	op *fuseops.CreateSymlinkOp,
 ) (err error) {
-	parent := fs.getInodeOrDie(op.Parent)
+	parent, err := fs.getInodeOrErr(op.Parent)
+	if err != nil {
+		return err
+	}
 
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
@@ -256,7 +274,10 @@ func (fs *GoofysFuse) CreateSymlink(ctx context.Context,
 func (fs *GoofysFuse) ReadSymlink(ctx context.Context,
 	op *fuseops.ReadSymlinkOp,
 ) (err error) {
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	atomic.AddInt64(&fs.stats.metadataReads, 1)
 
@@ -278,7 +299,10 @@ func (fs *GoofysFuse) LookUpInode(
 
 	defer func() { fuseLog.Debugf("<-- LookUpInode %v %v %v", op.Parent, op.Name, err) }()
 
-	parent := fs.getInodeOrDie(op.Parent)
+	parent, err := fs.getInodeOrErr(op.Parent)
+	if err != nil {
+		return err
+	}
 
 	inode, err := parent.LookUpCached(op.Name)
 	if err != nil {
@@ -321,13 +345,19 @@ func (fs *GoofysFuse) OpenDir(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.noops, 1)
 
-	in := fs.getInodeOrDie(op.Inode)
+	in, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 	if atomic.LoadInt32(&in.CacheState) == ST_DEAD {
 		// Stale inode
 		return syscall.ESTALE
 	}
 
 	dh := in.OpenDir()
+	if dh == nil {
+		return syscall.ENOTDIR
+	}
 	op.Handle = fs.AddDirHandle(dh)
 
 	return
@@ -364,7 +394,7 @@ func (fs *GoofysFuse) ReadDir(
 	fs.mu.RUnlock()
 
 	if dh == nil {
-		panic(fmt.Sprintf("can't find dh=%v", op.Handle))
+		return syscall.ESTALE
 	}
 
 	inode := dh.inode
@@ -432,6 +462,9 @@ func (fs *GoofysFuse) ReleaseDirHandle(
 	fs.mu.RLock()
 	dh := fs.dirHandles[op.Handle]
 	fs.mu.RUnlock()
+	if dh == nil {
+		return syscall.ESTALE
+	}
 
 	fuseLog.E(dh.CloseDir())
 
@@ -448,7 +481,10 @@ func (fs *GoofysFuse) OpenFile(
 	ctx context.Context,
 	op *fuseops.OpenFileOp,
 ) (err error) {
-	in := fs.getInodeOrDie(op.Inode)
+	in, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	atomic.AddInt64(&fs.stats.noops, 1)
 
@@ -482,13 +518,21 @@ func (fs *GoofysFuse) ReadFile(
 	op *fuseops.ReadFileOp,
 ) (err error) {
 	atomic.AddInt64(&fs.stats.reads, 1)
+	atomic.AddInt64(&fs.stats.readsTotal, 1)
 
 	fs.mu.RLock()
 	fh := fs.fileHandles[op.Handle]
 	fs.mu.RUnlock()
+	if fh == nil {
+		return syscall.ESTALE
+	}
 
 	op.Data, op.BytesRead, err = fh.ReadFile(op.Offset, op.Size)
 	err = mapAwsError(err)
+	if err == nil && op.BytesRead > 0 {
+		atomic.AddInt64(&fs.stats.readBytes, int64(op.BytesRead))
+		atomic.AddInt64(&fs.stats.readBytesTotal, int64(op.BytesRead))
+	}
 
 	return
 }
@@ -500,7 +544,10 @@ func (fs *GoofysFuse) SyncFile(
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
 	if !fs.flags.IgnoreFsync {
-		in := fs.getInodeOrDie(op.Inode)
+		in, err := fs.getInodeOrErr(op.Inode)
+		if err != nil {
+			return err
+		}
 
 		if in.Id == fuseops.RootInodeID {
 			fs.SyncTree(nil)
@@ -547,6 +594,10 @@ func (fs *GoofysFuse) ReleaseFileHandle(
 ) (err error) {
 	fs.mu.Lock()
 	fh := fs.fileHandles[op.Handle]
+	if fh == nil {
+		fs.mu.Unlock()
+		return syscall.ESTALE
+	}
 	fh.Release()
 	atomic.AddInt64(&fs.stats.noops, 1)
 	fuseLog.Debugf("ReleaseFileHandle %v %v %v", fh.inode.FullName(), op.Handle, fh.inode.Id)
@@ -566,7 +617,10 @@ func (fs *GoofysFuse) CreateFile(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	parent := fs.getInodeOrDie(op.Parent)
+	parent, err := fs.getInodeOrErr(op.Parent)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&parent.CacheState) == ST_DEAD {
 		// Stale inode
@@ -608,7 +662,10 @@ func (fs *GoofysFuse) MkNode(
 		return syscall.ENOTSUP
 	}
 
-	parent := fs.getInodeOrDie(op.Parent)
+	parent, err := fs.getInodeOrErr(op.Parent)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&parent.CacheState) == ST_DEAD {
 		// Stale inode
@@ -654,7 +711,10 @@ func (fs *GoofysFuse) MkDir(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	parent := fs.getInodeOrDie(op.Parent)
+	parent, err := fs.getInodeOrErr(op.Parent)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&parent.CacheState) == ST_DEAD {
 		// Stale inode
@@ -689,7 +749,10 @@ func (fs *GoofysFuse) RmDir(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	parent := fs.getInodeOrDie(op.Parent)
+	parent, err := fs.getInodeOrErr(op.Parent)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&parent.CacheState) == ST_DEAD {
 		// Stale inode
@@ -708,7 +771,10 @@ func (fs *GoofysFuse) SetInodeAttributes(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&inode.CacheState) == ST_DEAD {
 		// Stale inode
@@ -733,14 +799,15 @@ func (fs *GoofysFuse) WriteFile(
 	op *fuseops.WriteFileOp,
 ) (err error) {
 	atomic.AddInt64(&fs.stats.writes, 1)
+	atomic.AddInt64(&fs.stats.writesTotal, 1)
 
 	fs.mu.RLock()
 
 	fh, ok := fs.fileHandles[op.Handle]
-	if !ok {
-		panic(fmt.Sprintf("WriteFile: can't find handle %v", op.Handle))
-	}
 	fs.mu.RUnlock()
+	if !ok {
+		return syscall.ESTALE
+	}
 
 	// fuse binding leaves extra room for header, so we
 	// account for it when we decide whether to do "zero-copy" write
@@ -748,6 +815,10 @@ func (fs *GoofysFuse) WriteFile(
 	err = fh.WriteFile(op.Offset, op.Data, copyData)
 	err = mapAwsError(err)
 	op.SuppressReuse = !copyData
+	if err == nil && len(op.Data) > 0 {
+		atomic.AddInt64(&fs.stats.writeBytes, int64(len(op.Data)))
+		atomic.AddInt64(&fs.stats.writeBytesTotal, int64(len(op.Data)))
+	}
 
 	return
 }
@@ -758,7 +829,10 @@ func (fs *GoofysFuse) Unlink(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	parent := fs.getInodeOrDie(op.Parent)
+	parent, err := fs.getInodeOrErr(op.Parent)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&parent.CacheState) == ST_DEAD {
 		// Stale inode
@@ -778,8 +852,14 @@ func (fs *GoofysFuse) Rename(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	parent := fs.getInodeOrDie(op.OldParent)
-	newParent := fs.getInodeOrDie(op.NewParent)
+	parent, err := fs.getInodeOrErr(op.OldParent)
+	if err != nil {
+		return err
+	}
+	newParent, err := fs.getInodeOrErr(op.NewParent)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&parent.CacheState) == ST_DEAD ||
 		atomic.LoadInt32(&newParent.CacheState) == ST_DEAD {
@@ -807,7 +887,10 @@ func (fs *GoofysFuse) Fallocate(
 ) (err error) {
 	atomic.AddInt64(&fs.stats.metadataWrites, 1)
 
-	inode := fs.getInodeOrDie(op.Inode)
+	inode, err := fs.getInodeOrErr(op.Inode)
+	if err != nil {
+		return err
+	}
 
 	if atomic.LoadInt32(&inode.CacheState) == ST_DEAD {
 		// Stale inode

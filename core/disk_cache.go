@@ -3,15 +3,24 @@ package core
 import (
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jacobsa/fuse/fuseops"
 	"github.com/tidwall/btree"
+)
+
+const (
+	diskCacheTargetFreePct   = 0.10
+	diskCacheCriticalFreePct = 0.05
+	// Re-enable above target to avoid flapping when free space hovers around threshold.
+	diskCacheReenableFreePct = 0.12
 )
 
 type CacheKey struct {
@@ -137,23 +146,20 @@ func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte, pin
 
 	size := int64(len(data))
 	path := c.getPath(inodeID, offset)
-
-	tmpPath := path + ".tmp"
-	f, err := os.Create(tmpPath)
-	if err != nil {
-		return err
-	}
-
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	f.Close()
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
-		return err
+	var err error
+	for attempt := 0; attempt < 2; attempt++ {
+		err = c.writeCacheFile(path, data)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.ENOSPC) || attempt == 1 {
+			return err
+		}
+		// Reclaim cache space and retry once when we hit a local disk full condition.
+		c.checkDiskSpace()
+		if !c.CanWrite() {
+			return fmt.Errorf("disk cache is disabled due to low space")
+		}
 	}
 
 	c.mu.Lock()
@@ -177,6 +183,30 @@ func (c *DiskCache) Put(inodeID fuseops.InodeID, offset uint64, data []byte, pin
 	}
 
 	c.evictIfNeeded()
+	return nil
+}
+
+func (c *DiskCache) writeCacheFile(path string, data []byte) error {
+	tmpPath := path + ".tmp"
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return err
+	}
+
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
 	return nil
 }
 
@@ -355,6 +385,8 @@ func (c *DiskCache) evictToSize(targetSize int64) {
 
 // StartMonitor periodically checks disk usage and evicts if free space is low.
 func (c *DiskCache) StartMonitor(ctx context.Context) {
+	// Check immediately so we don't wait up to a full ticker interval on startup.
+	c.checkDiskSpace()
 	ticker := time.NewTicker(1 * time.Minute)
 	go func() {
 		defer ticker.Stop()
@@ -378,41 +410,39 @@ func (c *DiskCache) checkDiskSpace() {
 	if err != nil {
 		return // Ignore errors, retry next time
 	}
+	if total == 0 {
+		return
+	}
 
-	// User req: "always remain 5-10% free space"
-	targetFree := uint64(float64(total) * 0.10)
-	criticalFree := uint64(float64(total) * 0.05)
+	targetFree := uint64(float64(total) * diskCacheTargetFreePct)
+	criticalFree := uint64(float64(total) * diskCacheCriticalFreePct)
+	reenableFree := uint64(float64(total) * diskCacheReenableFreePct)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if free < targetFree {
-		if free < criticalFree {
-			if !c.Disabled {
-				mainLog.Warnf("Disk cache disabled: free space (%.2f GB) is below 5%% of total (%.2f GB)", float64(free)/1e9, float64(total)/1e9)
-				c.Disabled = true
-			}
-			// If free space is very low, evict everything
-			c.evictToSize(0)
-		} else {
-			// We need to free up (targetFree - free) bytes
-			needed := int64(targetFree - free)
-
-			// Reduce cache size by 'needed' amount, but don't go below 0
-			newTarget := c.CurSize - needed
-			if newTarget < 0 {
-				newTarget = 0
-			}
-
-			// Also enforce MaxSize just in case
-			if newTarget > c.MaxSize {
-				newTarget = c.MaxSize
-			}
-
-			c.evictToSize(newTarget)
+		// Free only what is needed to reach target free space.
+		// In critical mode we still use bounded LRU eviction, but we disable new writes.
+		needed := int64(targetFree - free)
+		newTarget := c.CurSize - needed
+		if newTarget < 0 {
+			newTarget = 0
 		}
-	} else if c.Disabled && free > targetFree {
-		mainLog.Infof("Disk cache re-enabled: free space (%.2f GB) is above 10%%", float64(free)/1e9)
+		if newTarget > c.MaxSize {
+			newTarget = c.MaxSize
+		}
+
+		if free < criticalFree && !c.Disabled {
+			mainLog.Warnf("Disk cache disabled: free space (%.2f GB) is below %.0f%% of total (%.2f GB)",
+				float64(free)/1e9, diskCacheCriticalFreePct*100, float64(total)/1e9)
+			c.Disabled = true
+		}
+
+		c.evictToSize(newTarget)
+	} else if c.Disabled && free > reenableFree {
+		mainLog.Infof("Disk cache re-enabled: free space (%.2f GB) is above %.0f%%",
+			float64(free)/1e9, diskCacheReenableFreePct*100)
 		c.Disabled = false
 	}
 }
@@ -487,6 +517,7 @@ func (c *DiskCache) removeEntry(el *list.Element) {
 
 	delete(c.items, pKey)
 	delete(c.logicalOffsets, pKey)
+	delete(c.pinned, pKey)
 	c.lru.Remove(el)
 }
 
@@ -511,9 +542,21 @@ func (c *DiskCache) Delete(inodeID fuseops.InodeID, logicalOffset, physicalOffse
 func (c *DiskCache) RestoreState(inodeID fuseops.InodeID, logicalOffset, physicalOffset uint64, size int64, accessTime time.Time, pinned bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
+	if _, exists := c.items[pKey]; !exists {
+		info, err := os.Stat(c.getPath(inodeID, physicalOffset))
+		if err != nil {
+			if !os.IsNotExist(err) {
+				mainLog.Warnf("DiskCache: failed to stat cache file for inode %v offset %v: %v", inodeID, physicalOffset, err)
+			}
+			return
+		}
+		size = info.Size()
+	}
+
 	c.addEntryLocked(inodeID, logicalOffset, physicalOffset, size, accessTime)
 	if pinned {
-		pKey := CacheKey{InodeID: inodeID, Offset: physicalOffset}
 		c.pinned[pKey]++
 	}
 }
