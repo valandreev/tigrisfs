@@ -404,10 +404,10 @@ func (inode *Inode) sealDir() {
 	} else {
 		inode.Attributes.Mtime, inode.Attributes.Ctime = inode.findChildMaxTime()
 	}
-	
+
 	// Increment generation to signal all handles need revalidation
 	atomic.AddUint64(&inode.dir.generation, 1)
-	
+
 	inode.removeExpired("")
 }
 
@@ -660,7 +660,7 @@ func (dh *DirHandle) checkDirPosition() {
 		dh.lastInternalOffset = -1
 		dh.generation = currentGen
 	}
-	
+
 	if dh.lastInternalOffset < 0 {
 		parent := dh.inode
 		// Directory position invalidated, try to find it again using lastName
@@ -1047,10 +1047,10 @@ func (parent *Inode) removeChildUnlocked(inode *Inode) {
 	if l == 0 {
 		return
 	}
-	
+
 	// Increment generation to invalidate all directory handles
 	atomic.AddUint64(&parent.dir.generation, 1)
-	
+
 	i := sort.Search(l, parent.findInodeFunc(inode.Name))
 	if i >= l || parent.dir.Children[i].Name != inode.Name {
 		panic(fmt.Sprintf("%v.removeName(%v) but child not found: %v",
@@ -1493,13 +1493,97 @@ func appendChildName(parent, child string) string {
 	return parent + child
 }
 
-func (inode *Inode) isEmptyDir() (bool, error) {
-	dh := NewDirHandle(inode)
-	dh.mu.Lock()
-	dh.Seek(2)
-	en, err := dh.ReadDir()
-	dh.mu.Unlock()
-	return en == nil, err
+// isEmptyDirFast reports whether a directory has no live entries, for Rename's
+// overwrite check. It never goes through the listing path (loadListing → slurpOnce
+// → insertSubTree), which slurps from the ROOT and re-locks ancestor inodes — a
+// self-deadlock when Rename already holds the parent locks (proven by a goroutine
+// dump under an npm rename storm) — so it is safe to call under those locks. It
+// reconciles both sides of the cache the way the listing path does: live in-memory
+// children (covering local creates not yet flushed), a listDone+unexpired fast path,
+// and otherwise a prefix-scoped backend list (delimited, paged) that skips
+// locally-deleted names, followed by a re-check of the in-memory children to catch a
+// create that raced the list. The backend list runs WITHOUT inode.mu held (in
+// cluster mode it can be a cross-node RPC).
+// LOCKS_EXCLUDED(inode.mu) — safe with ancestor locks held.
+func (inode *Inode) isEmptyDirFast() (bool, error) {
+	// Local state first, under the inode lock. A live in-memory child covers a
+	// locally-created entry not yet flushed to the backend, which a listing would
+	// miss; ST_DEAD/ST_DELETED are gone. If the directory is fully listed AND that
+	// listing has not expired, the in-memory children are authoritative and no
+	// backend call is needed; a stale listDone can hide children the backend gained.
+	inode.mu.Lock()
+	if live := inode.hasLiveChild(); live || (inode.dir.listDone &&
+		!expired(inode.dir.DirTime, inode.fs.flags.StatCacheTTL)) {
+		inode.mu.Unlock()
+		return !live, nil
+	}
+	// Snapshot the local deletes and drop the lock BEFORE the backend list. The list
+	// must not run under inode.mu: in cluster mode it can be a cross-node RPC, and
+	// holding a FUSE inode lock across it deadlocks (and it is pointless latency in
+	// the single-node case). The list never walks the inode tree either, so there is
+	// no root slurp to re-lock Rename's held parent.
+	deleted := make(map[string]struct{}, len(inode.dir.DeletedChildren))
+	for name := range inode.dir.DeletedChildren {
+		deleted[name] = struct{}{}
+	}
+	inode.mu.Unlock()
+
+	// A delimiter collapses each subtree to one immediate-child prefix (so a deleted
+	// directory with many descendants counts as one name, not a page of keys), and we
+	// page to the first entry whose immediate name is NOT locally deleted. Only the
+	// pathological "many locally-deleted children, no live one yet" case pages past
+	// the first response.
+	cloud, key := inode.cloud()
+	prefix := key + "/"
+	var token *string
+	for {
+		resp, err := RetryListBlobs(inode.fs.flags, cloud, &ListBlobsInput{
+			Prefix:            PString(prefix),
+			Delimiter:         PString("/"),
+			MaxKeys:           PUInt32(1000),
+			ContinuationToken: token,
+		})
+		if err != nil {
+			return false, err
+		}
+		for i := range resp.Prefixes {
+			name := strings.TrimSuffix((*resp.Prefixes[i].Prefix)[len(prefix):], "/")
+			if _, del := deleted[name]; !del {
+				return false, nil
+			}
+		}
+		for i := range resp.Items {
+			k := *resp.Items[i].Key
+			if k == prefix {
+				continue // the directory's own marker object
+			}
+			if _, del := deleted[k[len(prefix):]]; !del {
+				return false, nil
+			}
+		}
+		if !resp.IsTruncated || resp.NextContinuationToken == nil {
+			break
+		}
+		token = resp.NextContinuationToken
+	}
+
+	// Re-check local children under the lock: a Create/MkDir into the target only
+	// needs inode.mu, so one may have landed while we were listing unlocked. This
+	// closes that window without ever holding the lock across the backend call.
+	inode.mu.Lock()
+	defer inode.mu.Unlock()
+	return !inode.hasLiveChild(), nil
+}
+
+// hasLiveChild reports whether any in-memory child is present (not ST_DEAD/ST_DELETED).
+// LOCKS_REQUIRED(inode.mu)
+func (inode *Inode) hasLiveChild() bool {
+	for _, c := range inode.dir.Children {
+		if s := atomic.LoadInt32(&c.CacheState); s != ST_DEAD && s != ST_DELETED {
+			return true
+		}
+	}
+	return false
 }
 
 // LOCKS_REQUIRED(inode.Parent.mu)
@@ -1655,7 +1739,11 @@ func (parent *Inode) Rename(from string, newParent *Inode, to string) (err error
 			if !toInode.isDir() {
 				return syscall.ENOTDIR
 			}
-			toEmpty, err := toInode.isEmptyDir()
+			// isEmptyDirFast checks under this held lock (race-free, like the original
+			// isEmptyDir) but never lists from the root, so it does not self-deadlock.
+			// It reconciles local cache state with the backend, so both unflushed
+			// local creates and pending local deletes are honored.
+			toEmpty, err := toInode.isEmptyDirFast()
 			if err != nil {
 				return err
 			}
@@ -2025,7 +2113,7 @@ func (parent *Inode) recheckInodeByName(name string) (newInode *Inode, err error
 	parent.mu.Lock()
 	currentChild := parent.findChildUnlocked(name)
 	parent.mu.Unlock()
-	
+
 	newInode, err = parent.LookUp(name, currentChild == nil && !parent.fs.flags.NoPreloadDir)
 	if err != nil {
 		if currentChild != nil {
